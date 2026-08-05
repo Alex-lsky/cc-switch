@@ -71,10 +71,22 @@ export function providerNeedsRouting(
     )
       return true;
     const config = (provider.settingsConfig as Record<string, unknown>)?.config;
-    return (
+    if (
       typeof config === "string" &&
       (isCodexChatWireApi(extractCodexWireApi(config)) ||
         isCodexAnthropicWireApi(extractCodexWireApi(config)))
+    )
+      return true;
+
+    // 模型级覆盖：即使 provider 级是 Responses（直连），只要模型目录里有
+    // 标注为 Chat / Anthropic 的模型，就必须走代理转换（Responses 直连模型
+    // 与 Chat 模型共存时，代理按模型分发）。自动探测（model_probe）写回的
+    // apiFormat 会让此判断自动生效。
+    const modelCatalog = (provider.settingsConfig as Record<string, unknown>)
+      ?.modelCatalog as { models?: Array<{ apiFormat?: string }> } | undefined;
+    const models = modelCatalog?.models ?? [];
+    return models.some(
+      (m) => m.apiFormat === "openai_chat" || m.apiFormat === "anthropic",
     );
   }
 
