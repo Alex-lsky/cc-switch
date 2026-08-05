@@ -1362,6 +1362,8 @@
     "catalogColumnDisplay": "Menu Display Name",
     "catalogColumnModel": "Actual Request Model",
     "catalogColumnContext": "Context Window",
+    "catalogColumnApiFormat": "Upstream API",
+    "catalogApiFormatInherit": "Inherit Default",
     "reasoningModeToggle": "Supports Thinking Mode",
     "reasoningModeHint": "Enable when the upstream Chat Completions API supports toggling thinking on/off. Providers like Kimi, GLM and Qwen usually fall into this category.",
     "reasoningEffortToggle": "Supports Reasoning Effort",

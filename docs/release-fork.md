@@ -68,8 +68,9 @@ cat ~/.tauri/cc-switch-pro.key.pub | base64 | tr -d '\n'
 git push origin feat/model-level-routing-meizai   # 或你合并到的分支
 
 # 打 tag（版本号要和 package.json / Cargo.toml / tauri.conf.json 三处一致）
-git tag v3.19.1-meizai.1
-git push origin v3.19.1-meizai.1
+# ⚠️ 版本号必须纯数字（如 3.19.2），Windows MSI 不接受 -meizai.N 这类带字母后缀的版本
+git tag v3.19.2
+git push origin v3.19.2
 ```
 
 推送 `v*` tag 会自动触发 `release.yml`。
@@ -117,8 +118,7 @@ Release 默认是 **prerelease**（不会触发 GitHub 的 `/releases/latest` �
 
 手动检查：app 设置页 → 检查更新，或看日志 `~/.cc-switch/logs/cc-switch.log` 里 updater 相关行。
 
-**首次发布的坑**：当前装的版本是 `3.19.1-meizai.1`，第一次发的 tag 如果也是 `v3.19.1-meizai.1`，
-版本号相等 → 不会触发更新。要么发个更高的版本号（如 `v3.19.1-meizai.2`），要么用相同版本号重新装一次。
+**首次发布的坑**：版本号相等 → 不会触发更新。每次发版版本号必须比客户端当前版本**严格更高**（如已装 `3.19.2`，下次发 `3.19.3`），且必须纯数字（Windows MSI 限制）。
 
 ---
 

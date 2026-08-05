@@ -165,6 +165,10 @@ export const normalizeCodexCatalogModelsForSave = (
       model,
       ...(displayName ? { displayName } : {}),
       ...(contextWindow && contextWindow > 0 ? { contextWindow } : {}),
+      // Per-model upstream interface override (empty = inherit provider-level
+      // apiFormat). Survives load->save so mixed Responses/Chat gateways (e.g.
+      // Me-zai) keep their per-model routing after editing the provider.
+      ...(item.apiFormat ? { apiFormat: item.apiFormat } : {}),
       // Native Responses profile overrides (ignored by the chat/proxy profile).
       ...(typeof item.supportsParallelToolCalls === "boolean"
         ? { supportsParallelToolCalls: item.supportsParallelToolCalls }

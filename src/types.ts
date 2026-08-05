@@ -260,6 +260,13 @@ export interface CodexCatalogModel {
   model: string;
   displayName?: string;
   contextWindow?: string | number;
+  // Per-model upstream API format override. When set, the proxy routes THIS
+  // model to the matching upstream interface (Responses / Chat Completions /
+  // Anthropic) regardless of the provider-level apiFormat. When omitted, the
+  // model falls back to the provider-level apiFormat. This is what lets a
+  // single provider (e.g. Me-zai) expose a mix of /responses and
+  // /chat/completions models behind one base_url.
+  apiFormat?: CodexApiFormat;
   // Hidden provider capability metadata for the generated model catalog.
   // supportsParallelToolCalls is native-profile-only; inputModalities wins over
   // automatic text-only model detection for every profile.

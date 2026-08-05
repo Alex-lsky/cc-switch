@@ -126,6 +126,8 @@ function createCatalogRow(seed?: Partial<CodexCatalogModel>): CodexCatalogRow {
     model: seed?.model ?? "",
     displayName: seed?.displayName ?? "",
     contextWindow: seed?.contextWindow ?? "",
+    // Per-model upstream interface override (empty = follow provider-level apiFormat).
+    ...(seed?.apiFormat ? { apiFormat: seed.apiFormat } : {}),
     // Carry native-profile overrides verbatim (not user-editable in the row UI,
     // but must survive load->save so the official catalog fidelity is kept).
     ...(seed?.supportsParallelToolCalls !== undefined
@@ -154,6 +156,7 @@ function catalogRowsMatchModels(
       (row.displayName ?? "") === (incoming.displayName ?? "") &&
       String(row.contextWindow ?? "") ===
         String(incoming.contextWindow ?? "") &&
+      (row.apiFormat ?? "") === (incoming.apiFormat ?? "") &&
       (row.supportsParallelToolCalls ?? null) ===
         (incoming.supportsParallelToolCalls ?? null) &&
       (row.baseInstructions ?? "") === (incoming.baseInstructions ?? "") &&
@@ -945,7 +948,7 @@ export function CodexFormFields({
                 {catalogRows.length > 0 && (
                   <div className="space-y-2">
                     {/* 列头：md+ 显示 */}
-                    <div className="hidden grid-cols-[1fr_1fr_140px_36px] gap-2 px-1 text-xs font-medium text-muted-foreground md:grid">
+                    <div className="hidden grid-cols-[1fr_1fr_140px_140px_36px] gap-2 px-1 text-xs font-medium text-muted-foreground md:grid">
                       <span>
                         {t("codexConfig.catalogColumnDisplay", {
                           defaultValue: "菜单显示名",
@@ -961,13 +964,18 @@ export function CodexFormFields({
                           defaultValue: "上下文窗口",
                         })}
                       </span>
+                      <span>
+                        {t("codexConfig.catalogColumnApiFormat", {
+                          defaultValue: "上游接口",
+                        })}
+                      </span>
                       <span />
                     </div>
 
                     {catalogRows.map((row, index) => (
                       <div
                         key={row.rowId}
-                        className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_1fr_140px_36px]"
+                        className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_1fr_140px_140px_36px]"
                       >
                         <Input
                           value={row.displayName ?? ""}
@@ -1042,6 +1050,45 @@ export function CodexFormFields({
                             defaultValue: "上下文窗口",
                           })}
                         />
+                        <Select
+                          value={row.apiFormat ?? ""}
+                          onValueChange={(value) =>
+                            handleUpdateCatalogRow(index, {
+                              apiFormat: (value || undefined) as
+                                | CodexApiFormat
+                                | undefined,
+                            })
+                          }
+                        >
+                          <SelectTrigger
+                            className="h-9 text-xs"
+                            aria-label={t(
+                              "codexConfig.catalogColumnApiFormat",
+                              { defaultValue: "上游接口" },
+                            )}
+                          >
+                            <SelectValue
+                              placeholder={t(
+                                "codexConfig.catalogApiFormatInherit",
+                                { defaultValue: "跟随默认" },
+                              )}
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">
+                              {t("codexConfig.catalogApiFormatInherit", {
+                                defaultValue: "跟随默认",
+                              })}
+                            </SelectItem>
+                            <SelectItem value="openai_responses">
+                              Responses
+                            </SelectItem>
+                            <SelectItem value="openai_chat">
+                              Chat Completions
+                            </SelectItem>
+                            <SelectItem value="anthropic">Anthropic</SelectItem>
+                          </SelectContent>
+                        </Select>
                         <Button
                           type="button"
                           variant="ghost"

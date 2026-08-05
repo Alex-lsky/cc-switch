@@ -16,6 +16,35 @@ describe("ProviderForm Codex catalog helpers", () => {
     ]);
   });
 
+  it("preserves per-model apiFormat override and drops empty/invalid values", () => {
+    expect(
+      normalizeCodexCatalogModelsForSave([
+        {
+          model: "glm-5.2",
+          displayName: "GLM-5.2",
+          apiFormat: "openai_chat",
+        },
+        {
+          model: "gpt-5.6-luna",
+          apiFormat: "openai_responses",
+        },
+        {
+          model: "claude-sonnet",
+          apiFormat: "anthropic",
+        },
+        // Empty string / missing must be dropped (inherit provider-level default)
+        { model: "kimi-k3", apiFormat: "" },
+        { model: "untagged-model" },
+      ]),
+    ).toEqual([
+      { model: "glm-5.2", displayName: "GLM-5.2", apiFormat: "openai_chat" },
+      { model: "gpt-5.6-luna", apiFormat: "openai_responses" },
+      { model: "claude-sonnet", apiFormat: "anthropic" },
+      { model: "kimi-k3" },
+      { model: "untagged-model" },
+    ]);
+  });
+
   it("preserves native-profile overrides (parallel tool calls + input modalities + base instructions)", () => {
     expect(
       normalizeCodexCatalogModelsForSave([
