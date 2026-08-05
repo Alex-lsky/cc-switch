@@ -122,6 +122,11 @@ interface CodexFormFieldsProps {
 
 type CodexCatalogRow = CodexCatalogModel & { rowId: string };
 
+/// 模型目录“上游接口”下拉中“跟随默认”选项的 sentinel 值。
+/// Radix Select.Item 的 value 不能是空字符串（空串保留给 placeholder），
+/// 因此用特殊值表示“未单独标注，继承 provider 级默认”。
+const CATALOG_API_FORMAT_INHERIT = "__inherit__";
+
 function createCatalogRow(seed?: Partial<CodexCatalogModel>): CodexCatalogRow {
   return {
     rowId: crypto.randomUUID(),
@@ -1168,12 +1173,13 @@ export function CodexFormFields({
                           })}
                         />
                         <Select
-                          value={row.apiFormat ?? ""}
+                          value={row.apiFormat ?? CATALOG_API_FORMAT_INHERIT}
                           onValueChange={(value) =>
                             handleUpdateCatalogRow(index, {
-                              apiFormat: (value || undefined) as
-                                | CodexApiFormat
-                                | undefined,
+                              apiFormat:
+                                value === CATALOG_API_FORMAT_INHERIT
+                                  ? undefined
+                                  : (value as CodexApiFormat),
                             })
                           }
                         >
@@ -1197,7 +1203,9 @@ export function CodexFormFields({
                             />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">
+                            {/* 注意：Radix Select.Item 的 value 不能是空字符串
+                                （空串保留给 placeholder），用 sentinel 表示“跟随默认”。 */}
+                            <SelectItem value={CATALOG_API_FORMAT_INHERIT}>
                               {t("codexConfig.catalogApiFormatInherit", {
                                 defaultValue:
                                   "跟随默认（{{defaultFormat}}）",
