@@ -60,7 +60,7 @@
       }
     },
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YxpYyBrZXk6IEM4MDI4QzlBNTczOTI4RTMKUldUaktEbFhtb3dDeUM5US9kT0FmdGR5Ti9vQzcwa2dTMlpibDVDUmQ2M0VGTzVOWnd0SGpFVlEK",
+      "pubkey": "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUcxcGJtbHphV2R1SUhCMVlteHBZeUJyWlhrNklETkNOalpCUWtRMFEwVkVNRVE1TkRrS1VsZFNTakprUkU4eFMzUnRUek15VVdOamRrOHplVVU0VWtkbU9ITXdSVmhWZDA5cmN5dGtURzkwTmtwSFRrbHdZakJOU0RWVlpUSUs=",
       "endpoints": [
         "https://github.com/Alex-lsky/cc-switch/releases/latest/download/latest.json"
       ]
