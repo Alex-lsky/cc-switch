@@ -357,13 +357,17 @@ jobs:
 
           # DMG codesigning only when Apple signing is enabled; otherwise ship
           # an unsigned DMG (still installable, just not Gatekeeper-notarized).
-          CODESIGN_ARGS=()
+          # NOTE: macOS runners ship bash 3.2, where "${arr[@]}" on an empty
+          # array under `set -u` throws "unbound variable". Build the argument
+          # list in a plain string instead and pass it unquoted to create-dmg.
+          CODESIGN_ARG=""
           if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
-            CODESIGN_ARGS=(--codesign "$APPLE_SIGNING_IDENTITY")
+            CODESIGN_ARG="--codesign $APPLE_SIGNING_IDENTITY"
           else
             echo "ℹ️ Building unsigned DMG (ENABLE_APPLE_SIGNING not set)"
           fi
 
+          # shellcheck disable=SC2086 # intentional word-splitting of CODESIGN_ARG
           create-dmg \
             --volname "CC Switch" \
             --background "src-tauri/icons/dmg-background.png" \
@@ -373,7 +377,7 @@ jobs:
             --icon "CC Switch.app" 180 220 \
             --hide-extension "CC Switch.app" \
             --app-drop-link 480 220 \
-            "${CODESIGN_ARGS[@]}" \
+            $CODESIGN_ARG \
             --no-internet-enable \
             "release-assets/$NEW_DMG" \
             "$DMG_STAGE_DIR"
