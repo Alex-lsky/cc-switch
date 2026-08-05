@@ -16,6 +16,12 @@ jobs:
   release:
     runs-on: ${{ matrix.os }}
     environment: release
+    # pnpm 10's run-time dependency check (verify-deps-before-run) fails the
+    # build when build scripts are ignored (esbuild/msw on a frozen lockfile).
+    # Disable it job-wide so `pnpm run build:renderer` (Tauri's beforeBuildCommand)
+    # and all other pnpm invocations stop re-running `pnpm install` and aborting.
+    env:
+      PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: 'false'
     strategy:
       fail-fast: false
       matrix:
