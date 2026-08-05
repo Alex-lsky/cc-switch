@@ -249,19 +249,21 @@ export function CodexFormFields({
   const isAnthropicFormat = apiFormat === "anthropic";
 
   // provider 级上游格式的可读标签，用于模型表格"跟随默认"的占位提示
-  const upstreamFormatLabel = (format: CodexApiFormat | undefined) => {
+  // 短标签：用于表格"跟随默认"占位，避免长文案（如"Responses（原生）"）
+  // 在窄列里溢出/重叠。
+  const upstreamFormatShortLabel = (format: CodexApiFormat | undefined) => {
     switch (format) {
       case "openai_responses":
-        return t("codexConfig.upstreamFormatResponses", {
-          defaultValue: "Responses（原生）",
+        return t("codexConfig.upstreamFormatShortResponses", {
+          defaultValue: "Responses",
         });
       case "openai_chat":
-        return t("codexConfig.upstreamFormatChat", {
-          defaultValue: "Chat Completions",
+        return t("codexConfig.upstreamFormatShortChat", {
+          defaultValue: "Chat",
         });
       case "anthropic":
-        return t("codexConfig.upstreamFormatAnthropic", {
-          defaultValue: "Anthropic Messages",
+        return t("codexConfig.upstreamFormatShortAnthropic", {
+          defaultValue: "Anthropic",
         });
       default:
         return "—";
@@ -1070,7 +1072,7 @@ export function CodexFormFields({
                 {catalogRows.length > 0 && (
                   <div className="space-y-2">
                     {/* 列头：md+ 显示 */}
-                    <div className="hidden grid-cols-[1fr_1fr_140px_140px_36px] gap-2 px-1 text-xs font-medium text-muted-foreground md:grid">
+                    <div className="hidden grid-cols-[1fr_1fr_110px_160px_36px] gap-2 px-1 text-xs font-medium text-muted-foreground md:grid">
                       <span>
                         {t("codexConfig.catalogColumnDisplay", {
                           defaultValue: "菜单显示名",
@@ -1097,7 +1099,7 @@ export function CodexFormFields({
                     {catalogRows.map((row, index) => (
                       <div
                         key={row.rowId}
-                        className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_1fr_140px_140px_36px]"
+                        className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_1fr_110px_160px_36px]"
                       >
                         <Input
                           value={row.displayName ?? ""}
@@ -1184,20 +1186,21 @@ export function CodexFormFields({
                           }
                         >
                           <SelectTrigger
-                            className="h-9 text-xs"
+                            className="h-9 w-full overflow-hidden text-xs"
                             aria-label={t(
                               "codexConfig.catalogColumnApiFormat",
                               { defaultValue: "上游接口" },
                             )}
                           >
                             <SelectValue
+                              className="min-w-0 flex-1 truncate"
                               placeholder={t(
                                 "codexConfig.catalogApiFormatInherit",
                                 {
                                   defaultValue:
                                     "跟随默认（{{defaultFormat}}）",
                                   defaultFormat:
-                                    upstreamFormatLabel(apiFormat),
+                                    upstreamFormatShortLabel(apiFormat),
                                 },
                               )}
                             />
@@ -1210,7 +1213,7 @@ export function CodexFormFields({
                                 defaultValue:
                                   "跟随默认（{{defaultFormat}}）",
                                 defaultFormat:
-                                  upstreamFormatLabel(apiFormat),
+                                  upstreamFormatShortLabel(apiFormat),
                               })}
                             </SelectItem>
                             <SelectItem value="openai_responses">
