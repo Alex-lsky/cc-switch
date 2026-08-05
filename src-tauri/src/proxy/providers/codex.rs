@@ -73,15 +73,12 @@ pub fn codex_provider_uses_chat_completions(provider: &Provider) -> bool {
         .unwrap_or(false)
 }
 
+/// Provider-level (non-model-aware) form. Production routing uses the
+/// model-aware variant [`should_convert_codex_responses_to_chat_for_model`];
+/// this is retained as a public helper and exercised directly by unit tests.
+#[allow(dead_code)]
 pub fn should_convert_codex_responses_to_chat(provider: &Provider, endpoint: &str) -> bool {
-    let path = endpoint
-        .split_once('?')
-        .map_or(endpoint, |(path, _query)| path);
-
-    matches!(
-        path,
-        "/responses" | "/v1/responses" | "/responses/compact" | "/v1/responses/compact"
-    ) && codex_provider_uses_chat_completions(provider)
+    is_codex_responses_endpoint(endpoint) && codex_provider_uses_chat_completions(provider)
 }
 
 /// Whether a converted Codex Responses request may send `prompt_cache_key` to
@@ -195,15 +192,92 @@ pub fn codex_provider_uses_anthropic(provider: &Provider) -> bool {
         .unwrap_or(false)
 }
 
+/// Provider-level (non-model-aware) form. Production routing uses the
+/// model-aware variant [`should_convert_codex_responses_to_anthropic_for_model`];
+/// this is retained as a public helper and exercised directly by unit tests.
+#[allow(dead_code)]
 pub fn should_convert_codex_responses_to_anthropic(provider: &Provider, endpoint: &str) -> bool {
+    is_codex_responses_endpoint(endpoint) && codex_provider_uses_anthropic(provider)
+}
+
+// ---------------------------------------------------------------------------
+// Model-aware routing (Responses ⇄ Chat Completions ⇄ Anthropic)
+// ---------------------------------------------------------------------------
+//
+// A single Codex provider can expose a MIX of upstream API shapes behind one
+// base_url — e.g. a gateway that routes `gpt-5.6-luna` to a native `/responses`
+// backend while routing `grok-4.5` / `glm-5.2` to `/chat/completions`. The
+// provider-level detectors above (`codex_provider_uses_chat_completions`,
+// `codex_provider_uses_anthropic`) cannot express this: they look at a single
+// `apiFormat` for the whole provider.
+//
+// The model-aware variants below layer an optional per-model override on top of
+// the provider-level decision:
+//
+//   1. If the request model matches a `modelCatalog.models[]` row that declares
+//      its own `apiFormat`, that value wins (model-level override).
+//   2. Otherwise the provider-level detector is used unchanged (backwards
+//      compatible — providers without per-model `apiFormat` behave exactly as
+//      before).
+//
+// Both the forwarder (request side) and the handler (response side) MUST call
+// the same variant with the same model string, so the request and response
+// transforms stay in agreement. The forwarder reads `body["model"]`; the handler
+// reads `ctx.request_model` — both originate from the same request body field.
+
+/// Model-aware form of [`codex_provider_uses_chat_completions`]. Returns `true`
+/// when this request should be bridged to OpenAI Chat Completions upstream.
+pub fn codex_provider_uses_chat_completions_for_model(
+    provider: &Provider,
+    model: &str,
+) -> bool {
+    if let Some(api_format) = codex_catalog_model_api_format(provider, model) {
+        return is_chat_wire_api(&api_format);
+    }
+    codex_provider_uses_chat_completions(provider)
+}
+
+/// Model-aware form of [`should_convert_codex_responses_to_chat`]. Delegates
+/// the endpoint check to the provider-level function and only overrides the
+/// chat-detection half, keeping the endpoint logic in one place.
+pub fn should_convert_codex_responses_to_chat_for_model(
+    provider: &Provider,
+    endpoint: &str,
+    model: &str,
+) -> bool {
+    is_codex_responses_endpoint(endpoint)
+        && codex_provider_uses_chat_completions_for_model(provider, model)
+}
+
+/// Model-aware form of [`codex_provider_uses_anthropic`]. Returns `true` when
+/// this request should be bridged to a native Anthropic Messages upstream.
+pub fn codex_provider_uses_anthropic_for_model(provider: &Provider, model: &str) -> bool {
+    if let Some(api_format) = codex_catalog_model_api_format(provider, model) {
+        return is_anthropic_wire_api(&api_format);
+    }
+    codex_provider_uses_anthropic(provider)
+}
+
+/// Model-aware form of [`should_convert_codex_responses_to_anthropic`].
+pub fn should_convert_codex_responses_to_anthropic_for_model(
+    provider: &Provider,
+    endpoint: &str,
+    model: &str,
+) -> bool {
+    is_codex_responses_endpoint(endpoint)
+        && codex_provider_uses_anthropic_for_model(provider, model)
+}
+
+/// Shared `/responses` endpoint gate for both the provider-level and
+/// model-aware decision functions.
+fn is_codex_responses_endpoint(endpoint: &str) -> bool {
     let path = endpoint
         .split_once('?')
         .map_or(endpoint, |(path, _query)| path);
-
     matches!(
         path,
         "/responses" | "/v1/responses" | "/responses/compact" | "/v1/responses/compact"
-    ) && codex_provider_uses_anthropic(provider)
+    )
 }
 
 /// Whether a native-Responses Codex upstream needs Codex `namespace`/plugin
@@ -276,31 +350,98 @@ pub fn codex_provider_upstream_model(provider: &Provider) -> Option<String> {
         })
 }
 
-fn codex_provider_catalog_model_ids(provider: &Provider) -> HashSet<String> {
+/// Borrowed iterator over the raw JSON entries of a provider's
+/// `settings_config.modelCatalog.models` array. Returns an empty slice when the
+/// catalog is absent or malformed, so callers can iterate unconditionally.
+fn codex_catalog_model_entries(provider: &Provider) -> Vec<&JsonValue> {
     provider
         .settings_config
         .get("modelCatalog")
         .and_then(|catalog| catalog.get("models"))
         .and_then(|models| models.as_array())
-        .map(|models| {
-            models
-                .iter()
-                .filter_map(|model| model.get("model").and_then(|value| value.as_str()))
-                .map(str::trim)
-                .filter(|model| !model.is_empty())
-                .map(ToString::to_string)
-                .collect()
-        })
+        .map(|models| models.iter().collect::<Vec<&JsonValue>>())
         .unwrap_or_default()
 }
 
-/// For Codex Chat providers, ensure the request uses the configured upstream
-/// model before converting the request to Chat Completions.
+fn codex_provider_catalog_model_ids(provider: &Provider) -> HashSet<String> {
+    codex_catalog_model_entries(provider)
+        .into_iter()
+        .filter_map(|model| model.get("model").and_then(|value| value.as_str()))
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
+/// Look up a single catalog model entry by its id string. The id is matched
+/// against the row's `model` field (the canonical Codex catalog key) using the
+/// same normalization as `codex_provider_catalog_model_ids`.
+fn codex_catalog_model_entry<'a>(
+    entries: &'a [&JsonValue],
+    model: &str,
+) -> Option<&'a JsonValue> {
+    let needle = model.trim();
+    if needle.is_empty() {
+        return None;
+    }
+    entries
+        .iter()
+        .find(|entry| {
+            entry
+                .get("model")
+                .and_then(|value| value.as_str())
+                .map(str::trim)
+                == Some(needle)
+        })
+        .copied()
+}
+
+/// Per-model `apiFormat` declared inside `modelCatalog.models[]`. This is the
+/// model-level override that drives mixed Responses/Chat routing within a single
+/// provider (e.g. a gateway that exposes both `/responses` and `/chat/completions`
+/// models behind one base_url). Returns `None` when the model has no catalog
+/// entry or the entry does not declare an `apiFormat` — callers then fall back to
+/// the provider-level decision.
+///
+/// Accepts both `apiFormat` and `api_format` keys to mirror the provider-level
+/// detector ([`codex_provider_uses_chat_completions`]).
+fn codex_catalog_model_api_format(provider: &Provider, model: &str) -> Option<String> {
+    let entries = codex_catalog_model_entries(provider);
+    let entry = codex_catalog_model_entry(&entries, model)?;
+    entry
+        .get("apiFormat")
+        .or_else(|| entry.get("api_format"))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+/// Provider-level (non-model-aware) form. Production routing uses the
+/// model-aware variant [`apply_codex_chat_upstream_model_for_model`]; this is
+/// retained as a public helper and exercised directly by unit tests.
+#[allow(dead_code)]
 pub fn apply_codex_chat_upstream_model(
     provider: &Provider,
     body: &mut JsonValue,
 ) -> Option<String> {
     if !codex_provider_uses_chat_completions(provider) {
+        return None;
+    }
+    apply_codex_upstream_model(provider, body)
+}
+
+/// Model-aware variant of [`apply_codex_chat_upstream_model`]. The Chat-model
+/// gating honors a per-model `apiFormat` override (so a mixed provider that is
+/// Responses at the provider level but Chat for a specific model still applies
+/// model substitution on the Chat path). Used by the forwarder which has already
+/// resolved the per-request model when entering the Chat conversion branch.
+pub fn apply_codex_chat_upstream_model_for_model(
+    provider: &Provider,
+    body: &mut JsonValue,
+    model: &str,
+) -> Option<String> {
+    if !codex_provider_uses_chat_completions_for_model(provider, model) {
         return None;
     }
     apply_codex_upstream_model(provider, body)
@@ -1607,5 +1748,198 @@ wire_api = "responses"
             "config": "base_url = \"https://api.x.ai/v1\"\nwire_api = \"responses\""
         }));
         assert!(!provider_needs_responses_namespace_flatten(&plain));
+    }
+
+    // -------------------------------------------------------------------------
+    // Model-aware routing (Responses ⇄ Chat ⇄ Anthropic) per-model overrides.
+    // -------------------------------------------------------------------------
+
+    /// Helper: a provider whose provider-level apiFormat is `openai_responses`
+    /// but whose catalog declares a mix of per-model apiFormat values, mirroring
+    /// a real mixed gateway (e.g. Me-zai exposing gpt-5.6-luna on /responses and
+    /// grok-4.5 / glm-5.2 on /chat/completions).
+    fn mixed_catalog_provider() -> Provider {
+        create_provider(json!({
+            "base_url": "https://api.example.com/v1",
+            "modelCatalog": {
+                "models": [
+                    { "model": "gpt-5.6-luna", "apiFormat": "openai_responses" },
+                    { "model": "grok-4.5",      "apiFormat": "openai_chat" },
+                    { "model": "glm-5.2",       "apiFormat": "openai_chat" },
+                    { "model": "claude-sonnet", "apiFormat": "anthropic" },
+                    { "model": "untagged-model" }
+                ]
+            }
+        }))
+    }
+
+    #[test]
+    fn model_level_api_format_lookup_returns_declared_value() {
+        let provider = mixed_catalog_provider();
+        assert_eq!(
+            codex_catalog_model_api_format(&provider, "gpt-5.6-luna")
+                .as_deref(),
+            Some("openai_responses")
+        );
+        assert_eq!(
+            codex_catalog_model_api_format(&provider, "grok-4.5").as_deref(),
+            Some("openai_chat")
+        );
+        assert_eq!(
+            codex_catalog_model_api_format(&provider, "claude-sonnet")
+                .as_deref(),
+            Some("anthropic")
+        );
+    }
+
+    #[test]
+    fn model_level_api_format_lookup_missing_when_not_declared() {
+        let provider = mixed_catalog_provider();
+        // Row exists in catalog but has no apiFormat.
+        assert!(codex_catalog_model_api_format(&provider, "untagged-model").is_none());
+        // Model not in catalog at all.
+        assert!(codex_catalog_model_api_format(&provider, "does-not-exist").is_none());
+        // Empty / whitespace id is rejected.
+        assert!(codex_catalog_model_api_format(&provider, "  ").is_none());
+    }
+
+    #[test]
+    fn model_level_api_format_lookup_also_reads_snake_case_key() {
+        let provider = create_provider(json!({
+            "modelCatalog": {
+                "models": [
+                    { "model": "m1", "api_format": "openai_chat" }
+                ]
+            }
+        }));
+        assert_eq!(
+            codex_catalog_model_api_format(&provider, "m1").as_deref(),
+            Some("openai_chat")
+        );
+    }
+
+    #[test]
+    fn model_aware_chat_override_wins_over_provider_responses_default() {
+        // Provider-level default: not chat (no apiFormat / wire_api / chat url).
+        // A model-level openai_chat override must still route this model to Chat.
+        let provider = mixed_catalog_provider();
+        assert!(!codex_provider_uses_chat_completions(&provider));
+        assert!(codex_provider_uses_chat_completions_for_model(&provider, "grok-4.5"));
+        // Provider-level default is responses, and this model is explicitly
+        // responses → must stay non-chat.
+        assert!(!codex_provider_uses_chat_completions_for_model(&provider, "gpt-5.6-luna"));
+    }
+
+    #[test]
+    fn model_aware_chat_falls_back_to_provider_level_when_untagged() {
+        // A model with no per-model apiFormat falls back to the provider-level
+        // decision unchanged (here: not chat).
+        let provider = mixed_catalog_provider();
+        assert!(!codex_provider_uses_chat_completions_for_model(&provider, "untagged-model"));
+        assert!(!codex_provider_uses_chat_completions_for_model(&provider, "absent-model"));
+    }
+
+    #[test]
+    fn model_aware_chat_falls_back_to_provider_level_when_provider_is_chat() {
+        // Provider-level is chat; an untagged model inherits chat.
+        let provider = create_provider(json!({
+            "base_url": "https://example.com/v1/chat/completions",
+            "modelCatalog": { "models": [ { "model": "untagged" } ] }
+        }));
+        assert!(codex_provider_uses_chat_completions(&provider));
+        assert!(codex_provider_uses_chat_completions_for_model(&provider, "untagged"));
+        // But an explicit responses override on a row reverts it to non-chat.
+        let provider = create_provider(json!({
+            "base_url": "https://example.com/v1/chat/completions",
+            "modelCatalog": {
+                "models": [ { "model": "resp-model", "apiFormat": "openai_responses" } ]
+            }
+        }));
+        assert!(!codex_provider_uses_chat_completions_for_model(&provider, "resp-model"));
+    }
+
+    #[test]
+    fn should_convert_responses_to_chat_for_model_endpoint_and_model_gated() {
+        let provider = mixed_catalog_provider();
+
+        // Correct endpoint + chat model → convert.
+        assert!(should_convert_codex_responses_to_chat_for_model(
+            &provider,
+            "/responses",
+            "grok-4.5"
+        ));
+        // Chat model but wrong endpoint → no convert.
+        assert!(!should_convert_codex_responses_to_chat_for_model(
+            &provider,
+            "/chat/completions",
+            "grok-4.5"
+        ));
+        // Correct endpoint but responses model → no convert.
+        assert!(!should_convert_codex_responses_to_chat_for_model(
+            &provider,
+            "/v1/responses",
+            "gpt-5.6-luna"
+        ));
+        // Query string is stripped from the endpoint check.
+        assert!(should_convert_codex_responses_to_chat_for_model(
+            &provider,
+            "/responses/compact?stream=true",
+            "glm-5.2"
+        ));
+    }
+
+    #[test]
+    fn should_convert_responses_to_anthropic_for_model_uses_model_override() {
+        let provider = mixed_catalog_provider();
+        assert!(should_convert_codex_responses_to_anthropic_for_model(
+            &provider,
+            "/responses",
+            "claude-sonnet"
+        ));
+        // Provider-level default is not anthropic; an untagged model stays false.
+        assert!(!should_convert_codex_responses_to_anthropic_for_model(
+            &provider,
+            "/responses",
+            "untagged-model"
+        ));
+        // Chat override must NOT trip the anthropic path.
+        assert!(!should_convert_codex_responses_to_anthropic_for_model(
+            &provider,
+            "/responses",
+            "grok-4.5"
+        ));
+    }
+
+    #[test]
+    fn chat_and_anthropic_overrides_are_mutually_exclusive_per_model() {
+        let provider = mixed_catalog_provider();
+        // grok-4.5: chat → true for chat, false for anthropic.
+        assert!(codex_provider_uses_chat_completions_for_model(&provider, "grok-4.5"));
+        assert!(!codex_provider_uses_anthropic_for_model(&provider, "grok-4.5"));
+        // claude-sonnet: anthropic → false for chat, true for anthropic.
+        assert!(!codex_provider_uses_chat_completions_for_model(&provider, "claude-sonnet"));
+        assert!(codex_provider_uses_anthropic_for_model(&provider, "claude-sonnet"));
+    }
+
+    #[test]
+    fn apply_chat_upstream_model_for_model_honors_chat_override() {
+        // Provider-level is responses; grok-4.5 declares openai_chat in catalog.
+        // Model substitution must run for it (chat path active), and because the
+        // model is a known catalog id it is preserved verbatim.
+        let provider = mixed_catalog_provider();
+        let mut body = json!({ "model": "grok-4.5" });
+        let applied = apply_codex_chat_upstream_model_for_model(&provider, &mut body, "grok-4.5");
+        assert_eq!(applied.as_deref(), Some("grok-4.5"));
+        assert_eq!(body["model"], "grok-4.5");
+
+        // gpt-5.6-luna is responses → the chat-specific substitution is a no-op.
+        let mut body = json!({ "model": "gpt-5.6-luna" });
+        assert!(apply_codex_chat_upstream_model_for_model(
+            &provider,
+            &mut body,
+            "gpt-5.6-luna"
+        )
+        .is_none());
+        assert_eq!(body["model"], "gpt-5.6-luna");
     }
 }

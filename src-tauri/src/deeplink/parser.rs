@@ -17,11 +17,12 @@ pub fn parse_deeplink_url(url_str: &str) -> Result<DeepLinkImportRequest, AppErr
     let url = Url::parse(url_str)
         .map_err(|e| AppError::InvalidInput(format!("Invalid deep link URL: {e}")))?;
 
-    // Validate scheme
+    // Validate scheme. Accept both the upstream `ccswitch` scheme (for shared
+    // import links) and this fork's `ccswitch-pro` scheme.
     let scheme = url.scheme();
-    if scheme != "ccswitch" {
+    if !matches!(scheme, "ccswitch" | "ccswitch-pro") {
         return Err(AppError::InvalidInput(format!(
-            "Invalid scheme: expected 'ccswitch', got '{scheme}'"
+            "Invalid scheme: expected 'ccswitch' or 'ccswitch-pro', got '{scheme}'"
         )));
     }
 

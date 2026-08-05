@@ -1145,10 +1145,31 @@ impl RequestForwarder {
         // Codex upstream conversion mode — computed early because the [1m]-suffix strip
         // below must be skipped on the Anthropic path (the marker has to survive to
         // catalog matching and to the transform's own strip+beta detection).
-        let codex_responses_to_chat = matches!(app_type, AppType::Codex | AppType::GrokBuild)
-            && super::providers::should_convert_codex_responses_to_chat(provider, endpoint);
-        let codex_responses_to_anthropic = matches!(app_type, AppType::Codex | AppType::GrokBuild)
-            && super::providers::should_convert_codex_responses_to_anthropic(provider, endpoint);
+        //
+        // Model-aware: a single provider may expose a mix of `/responses` and
+        // `/chat/completions` (or Anthropic) models behind one base_url. The
+        // per-model `apiFormat` in `modelCatalog.models[]` overrides the
+        // provider-level decision; providers without per-model entries fall back
+        // to the provider-level behavior unchanged. The request `model` is read
+        // from the raw body (same source the handler uses via `ctx.request_model`),
+        // so both sides of the decision stay in agreement.
+        let codex_request_model = body
+            .get("model")
+            .and_then(|value| value.as_str())
+            .unwrap_or("");
+        let is_codex_app = matches!(app_type, AppType::Codex | AppType::GrokBuild);
+        let codex_responses_to_chat = is_codex_app
+            && super::providers::should_convert_codex_responses_to_chat_for_model(
+                provider,
+                endpoint,
+                codex_request_model,
+            );
+        let codex_responses_to_anthropic = is_codex_app
+            && super::providers::should_convert_codex_responses_to_anthropic_for_model(
+                provider,
+                endpoint,
+                codex_request_model,
+            );
         let codex_official_auth_passthrough = matches!(app_type, AppType::Codex)
             && super::providers::is_codex_official_provider(provider);
 
@@ -1439,7 +1460,11 @@ impl RequestForwarder {
                     "[Codex] Restored or enriched {restored} cached function call item(s) for Chat upstream"
                 );
             }
-            super::providers::apply_codex_chat_upstream_model(provider, &mut mapped_body);
+            super::providers::apply_codex_chat_upstream_model_for_model(
+                provider,
+                &mut mapped_body,
+                codex_request_model,
+            );
             let reasoning_config =
                 super::providers::resolve_codex_chat_reasoning_config(provider, &mapped_body);
             let mut chat_body = super::providers::transform_codex_chat::responses_to_chat_completions_with_reasoning(

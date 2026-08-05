@@ -845,7 +845,11 @@ async fn handle_responses_for_app(
     ctx.provider = result.provider;
     let response = result.response;
 
-    if super::providers::should_convert_codex_responses_to_anthropic(&ctx.provider, &endpoint) {
+    if super::providers::should_convert_codex_responses_to_anthropic_for_model(
+        &ctx.provider,
+        &endpoint,
+        &ctx.request_model,
+    ) {
         return handle_codex_anthropic_to_responses_transform(
             response,
             &ctx,
@@ -857,7 +861,11 @@ async fn handle_responses_for_app(
         .await;
     }
 
-    if super::providers::should_convert_codex_responses_to_chat(&ctx.provider, &endpoint) {
+    if super::providers::should_convert_codex_responses_to_chat_for_model(
+        &ctx.provider,
+        &endpoint,
+        &ctx.request_model,
+    ) {
         return handle_codex_chat_to_responses_transform(
             response,
             &ctx,
@@ -979,7 +987,11 @@ async fn handle_responses_compact_for_app(
     ctx.provider = result.provider;
     let response = result.response;
 
-    if super::providers::should_convert_codex_responses_to_anthropic(&ctx.provider, &endpoint) {
+    if super::providers::should_convert_codex_responses_to_anthropic_for_model(
+        &ctx.provider,
+        &endpoint,
+        &ctx.request_model,
+    ) {
         return handle_codex_anthropic_to_responses_transform(
             response,
             &ctx,
@@ -991,7 +1003,11 @@ async fn handle_responses_compact_for_app(
         .await;
     }
 
-    if super::providers::should_convert_codex_responses_to_chat(&ctx.provider, &endpoint) {
+    if super::providers::should_convert_codex_responses_to_chat_for_model(
+        &ctx.provider,
+        &endpoint,
+        &ctx.request_model,
+    ) {
         return handle_codex_chat_to_responses_transform(
             response,
             &ctx,
