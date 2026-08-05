@@ -32,8 +32,8 @@ describe("ProviderForm Codex catalog helpers", () => {
           model: "claude-sonnet",
           apiFormat: "anthropic",
         },
-        // Empty string / missing must be dropped (inherit provider-level default)
-        { model: "kimi-k3", apiFormat: "" },
+        // Missing apiFormat must stay unset (inherit provider-level default)
+        { model: "kimi-k3" },
         { model: "untagged-model" },
       ]),
     ).toEqual([

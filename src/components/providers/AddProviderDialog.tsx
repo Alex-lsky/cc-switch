@@ -8,6 +8,7 @@ import { FullScreenPanel } from "@/components/common/FullScreenPanel";
 import type { Provider, CustomEndpoint, UniversalProvider } from "@/types";
 import type { AppId } from "@/lib/api";
 import { universalProvidersApi } from "@/lib/api";
+import { probeModelFormats } from "@/lib/api/model-probe";
 import {
   ProviderForm,
   type ProviderFormValues,
@@ -115,6 +116,61 @@ export function AddProviderDialog({
         string,
         unknown
       >;
+
+      // 首次接入 Codex provider：对未标注接口的模型自动探测上游格式
+      // （responses → chat → anthropic，任一 2xx 即停），把结果合并进
+      // modelCatalog.models[].apiFormat 再保存。探测失败不阻塞保存。
+      if (appId === "codex") {
+        const catalog = parsedConfig.modelCatalog as
+          | { models?: Array<Record<string, unknown>> }
+          | undefined;
+        const models = catalog?.models ?? [];
+        const unprobed = models.filter((m) => !m.apiFormat);
+        if (unprobed.length > 0) {
+          const config = parsedConfig.config as string | undefined;
+          const auth = parsedConfig.auth as
+            | Record<string, unknown>
+            | undefined;
+          const baseUrl = config ? extractCodexBaseUrl(config) : undefined;
+          const apiKey =
+            typeof auth?.OPENAI_API_KEY === "string"
+              ? auth.OPENAI_API_KEY
+              : "";
+          if (baseUrl && apiKey) {
+            try {
+              const results = await probeModelFormats(
+                baseUrl,
+                apiKey,
+                unprobed.map((m) => String(m.model ?? "")).filter(Boolean),
+              );
+              const formatByModel = new Map(
+                results
+                  .filter((r) => r.apiFormat)
+                  .map((r) => [r.model, r.apiFormat as string]),
+              );
+              if (formatByModel.size > 0) {
+                for (const m of unprobed) {
+                  const detected = formatByModel.get(String(m.model ?? ""));
+                  if (detected) {
+                    m.apiFormat = detected;
+                  }
+                }
+                const detectedCount = formatByModel.size;
+                toast.success(
+                  t("provider.addAutoProbeToast", {
+                    defaultValue: "已自动识别 {{count}} 个模型的上游接口",
+                    count: detectedCount,
+                  }),
+                  { closeButton: true },
+                );
+              }
+            } catch (error) {
+              // 探测失败不阻塞保存：模型 apiFormat 留空，回退 provider 级默认
+              console.warn("[ModelProbe] auto-probe failed:", error);
+            }
+          }
+        }
+      }
 
       // 构造基础提交数据
       const providerData: Omit<Provider, "id"> & {
@@ -316,7 +372,7 @@ export function AddProviderDialog({
       await onSubmit(providerData);
       onOpenChange(false);
     },
-    [appId, onSubmit, onOpenChange],
+    [appId, onSubmit, onOpenChange, t],
   );
 
   const footer =

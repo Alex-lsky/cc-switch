@@ -23,6 +23,7 @@ import {
   Download,
   Loader2,
   Plus,
+  ScanSearch,
   Trash2,
 } from "lucide-react";
 import EndpointSpeedTest from "./EndpointSpeedTest";
@@ -34,6 +35,7 @@ import {
   showFetchModelsError,
   type FetchedModel,
 } from "@/lib/api/model-fetch";
+import { probeModelFormats } from "@/lib/api/model-probe";
 import { CustomUserAgentField } from "./CustomUserAgentField";
 import { LocalProxyRequestOverridesField } from "./LocalProxyRequestOverridesField";
 import { cn } from "@/lib/utils";
@@ -218,6 +220,7 @@ export function CodexFormFields({
 
   const [fetchedModels, setFetchedModels] = useState<FetchedModel[]>([]);
   const [isFetchingModels, setIsFetchingModels] = useState(false);
+  const [isProbingModels, setIsProbingModels] = useState(false);
   // 拉取请求序号：请求身份（Base URL / 完整地址开关 / API Key / 自定义 UA）
   // 一变即自增，清空旧列表并作废在途响应——/models 结果可能按 Key 的模型
   // 授权返回，换号后残留旧列表会误导选择
@@ -239,6 +242,26 @@ export function CodexFormFields({
   //（填了才生成 catalog）。两者都已与「路由接管」概念解耦。
   const isChatFormat = apiFormat === "openai_chat";
   const isAnthropicFormat = apiFormat === "anthropic";
+
+  // provider 级上游格式的可读标签，用于模型表格"跟随默认"的占位提示
+  const upstreamFormatLabel = (format: CodexApiFormat | undefined) => {
+    switch (format) {
+      case "openai_responses":
+        return t("codexConfig.upstreamFormatResponses", {
+          defaultValue: "Responses（原生）",
+        });
+      case "openai_chat":
+        return t("codexConfig.upstreamFormatChat", {
+          defaultValue: "Chat Completions",
+        });
+      case "anthropic":
+        return t("codexConfig.upstreamFormatAnthropic", {
+          defaultValue: "Anthropic Messages",
+        });
+      default:
+        return "—";
+    }
+  };
   const canEditCatalog = Boolean(onCatalogModelsChange);
   const canEditReasoning = Boolean(onCodexChatReasoningChange);
   const supportsThinking =
@@ -418,6 +441,80 @@ export function CodexFormFields({
     setCatalogRows((current) => [...current, createCatalogRow()]);
   }, [onCatalogModelsChange]);
 
+  // 对未标注上游接口的模型自动探测（responses → chat → anthropic，任一 2xx 即停），
+  // 结果写回对应行的 apiFormat（用户可改，保存时随模型目录持久化）。
+  const handleProbeModels = useCallback(async () => {
+    if (!onCatalogModelsChange || !codexBaseUrl || !codexApiKey) {
+      toast.warning(
+        t("codexConfig.probeModelsMissingConfig", {
+          defaultValue: "请先填写接口地址和 API Key 再自动识别",
+        }),
+      );
+      return;
+    }
+    const unprobed = catalogRows.filter(
+      (row) => row.model.trim() && !row.apiFormat,
+    );
+    if (unprobed.length === 0) {
+      toast.info(
+        t("codexConfig.probeModelsNonePending", {
+          defaultValue: "所有模型都已标注上游接口",
+        }),
+      );
+      return;
+    }
+
+    setIsProbingModels(true);
+    try {
+      const results = await probeModelFormats(
+        codexBaseUrl,
+        codexApiKey,
+        unprobed.map((row) => row.model.trim()),
+      );
+      const formatByModel = new Map(
+        results
+          .filter((r) => r.apiFormat)
+          .map((r) => [r.model, r.apiFormat as string]),
+      );
+      let detected = 0;
+      setCatalogRows((current) =>
+        current.map((row) => {
+          const format = formatByModel.get(row.model.trim());
+          if (format && !row.apiFormat) {
+            detected += 1;
+            return { ...row, apiFormat: format as CodexApiFormat };
+          }
+          return row;
+        }),
+      );
+      if (detected > 0) {
+        toast.success(
+          t("codexConfig.probeModelsDone", {
+            defaultValue: "已识别 {{count}} 个模型的上游接口，记得保存",
+            count: detected,
+          }),
+          { closeButton: true },
+        );
+      } else {
+        toast.info(
+          t("codexConfig.probeModelsNoneDetected", {
+            defaultValue: "未能识别任何模型的上游接口（可能被上游拒绝或网络不可达）",
+          }),
+        );
+      }
+    } catch (error) {
+      console.warn("[ModelProbe] probe failed:", error);
+      toast.error(
+        t("codexConfig.probeModelsError", {
+          defaultValue: "自动识别失败：{{message}}",
+          message: String(error),
+        }),
+      );
+    } finally {
+      setIsProbingModels(false);
+    }
+  }, [catalogRows, codexBaseUrl, codexApiKey, onCatalogModelsChange, t]);
+
   const handleUpdateCatalogRow = useCallback(
     (index: number, patch: Partial<CodexCatalogModel>) => {
       setCatalogRows((current) =>
@@ -488,6 +585,26 @@ export function CodexFormFields({
           <Download className="h-3.5 w-3.5" />
         )}
         {t("providerForm.fetchModels")}
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={handleProbeModels}
+        disabled={isProbingModels}
+        className="h-7 gap-1"
+        title={t("codexConfig.probeModelsHint", {
+          defaultValue: "对未标注的模型发极简请求，自动判断其支持的接口",
+        })}
+      >
+        {isProbingModels ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <ScanSearch className="h-3.5 w-3.5" />
+        )}
+        {t("codexConfig.probeModelsButton", {
+          defaultValue: "自动识别接口",
+        })}
       </Button>
       <Button
         type="button"
@@ -659,7 +776,7 @@ export function CodexFormFields({
                 <div className="space-y-1.5">
                   <FormLabel htmlFor="codex-upstream-format">
                     {t("codexConfig.upstreamFormatLabel", {
-                      defaultValue: "上游格式",
+                      defaultValue: "默认上游格式",
                     })}
                   </FormLabel>
                   <Select
@@ -695,7 +812,7 @@ export function CodexFormFields({
                   <p className="text-xs leading-relaxed text-muted-foreground">
                     {t("codexConfig.upstreamFormatHint", {
                       defaultValue:
-                        "供应商原生是 Responses API 就选 Responses（直连，不转换格式）；使用 Chat Completions 协议就选 Chat；供应商只提供原生 Anthropic Messages 协议就选 Anthropic Messages。Chat 与 Anthropic Messages 均需开启路由接管才能转换为 Responses。",
+                        "供应商的默认接口格式，仅对下方模型映射表中未单独标注“上游接口”的模型生效。可在模型映射表中逐模型覆盖，或用“自动识别接口”一键探测。",
                     })}
                   </p>
                 </div>
@@ -1070,14 +1187,22 @@ export function CodexFormFields({
                             <SelectValue
                               placeholder={t(
                                 "codexConfig.catalogApiFormatInherit",
-                                { defaultValue: "跟随默认" },
+                                {
+                                  defaultValue:
+                                    "跟随默认（{{defaultFormat}}）",
+                                  defaultFormat:
+                                    upstreamFormatLabel(apiFormat),
+                                },
                               )}
                             />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="">
                               {t("codexConfig.catalogApiFormatInherit", {
-                                defaultValue: "跟随默认",
+                                defaultValue:
+                                  "跟随默认（{{defaultFormat}}）",
+                                defaultFormat:
+                                  upstreamFormatLabel(apiFormat),
                               })}
                             </SelectItem>
                             <SelectItem value="openai_responses">
