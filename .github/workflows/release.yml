@@ -187,7 +187,7 @@ jobs:
           echo "✅ Tauri signing key prepared"
 
       - name: Import Apple signing certificate
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && vars.ENABLE_APPLE_SIGNING == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -233,27 +233,37 @@ jobs:
         shell: bash
         timeout-minutes: 60
         env:
-          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Apple code-signing/notarization credentials are only set when
+          # ENABLE_APPLE_SIGNING == 'true'; absent values make Tauri produce an
+          # unsigned .app (still installable via right-click → Open, and the
+          # Tauri updater minisign signature is independent of Apple signing).
+          APPLE_SIGNING_IDENTITY: ${{ vars.ENABLE_APPLE_SIGNING == 'true' && env.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_ID: ${{ vars.ENABLE_APPLE_SIGNING == 'true' && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ vars.ENABLE_APPLE_SIGNING == 'true' && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ vars.ENABLE_APPLE_SIGNING == 'true' && secrets.APPLE_TEAM_ID || '' }}
         run: |
           set -euo pipefail
           max_attempts=3
           for attempt in $(seq 1 "$max_attempts"); do
             echo "=== macOS build/notarization attempt ${attempt}/${max_attempts} ==="
-            if pnpm tauri build --target universal-apple-darwin; then
-              echo "✅ macOS build/notarization succeeded"
+            if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
+              BUILD_ARGS=(--target universal-apple-darwin)
+            else
+              echo "ℹ️ ENABLE_APPLE_SIGNING not set — building unsigned macOS app"
+              BUILD_ARGS=(--target universal-apple-darwin)
+            fi
+            if pnpm tauri build "${BUILD_ARGS[@]}"; then
+              echo "✅ macOS build succeeded"
               exit 0
             fi
 
             if [ "$attempt" -eq "$max_attempts" ]; then
-              echo "❌ macOS build/notarization failed after ${max_attempts} attempts" >&2
+              echo "❌ macOS build failed after ${max_attempts} attempts" >&2
               exit 1
             fi
 
             sleep_seconds=$((attempt * 60))
-            echo "⚠️ macOS build/notarization failed, retrying in ${sleep_seconds}s..."
+            echo "⚠️ macOS build failed, retrying in ${sleep_seconds}s..."
             sleep "$sleep_seconds"
           done
 
@@ -304,9 +314,14 @@ jobs:
             exit 1
           fi
 
-          # Staple notarization ticket to .app (Tauri already notarized it)
-          xcrun stapler staple "$APP_PATH"
-          echo "✅ .app stapled"
+          # Staple notarization ticket to .app (Tauri already notarized it).
+          # Only when Apple signing is enabled; unsigned builds have no ticket.
+          if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
+            xcrun stapler staple "$APP_PATH"
+            echo "✅ .app stapled"
+          else
+            echo "ℹ️ Skipping .app staple (unsigned build)"
+          fi
 
           # 1) Collect .tar.gz (updater artifact)
           NEW_TAR_GZ="CC-Switch-${VERSION}-macOS.tar.gz"
@@ -320,17 +335,21 @@ jobs:
           echo "macOS zip ready: $NEW_ZIP"
 
           # 3) Create styled DMG with create-dmg (Tauri's built-in DMG styling doesn't work on CI)
-          if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
-            echo "❌ APPLE_SIGNING_IDENTITY is missing before DMG creation" >&2
-            exit 1
-          fi
-
           HOMEBREW_NO_AUTO_UPDATE=1 brew install create-dmg
           NEW_DMG="CC-Switch-${VERSION}-macOS.dmg"
           DMG_STAGE_DIR="$RUNNER_TEMP/dmg-stage"
           rm -rf "$DMG_STAGE_DIR"
           mkdir -p "$DMG_STAGE_DIR"
           ditto "$APP_PATH" "$DMG_STAGE_DIR/CC Switch.app"
+
+          # DMG codesigning only when Apple signing is enabled; otherwise ship
+          # an unsigned DMG (still installable, just not Gatekeeper-notarized).
+          CODESIGN_ARGS=()
+          if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
+            CODESIGN_ARGS=(--codesign "$APPLE_SIGNING_IDENTITY")
+          else
+            echo "ℹ️ Building unsigned DMG (ENABLE_APPLE_SIGNING not set)"
+          fi
 
           create-dmg \
             --volname "CC Switch" \
@@ -341,7 +360,7 @@ jobs:
             --icon "CC Switch.app" 180 220 \
             --hide-extension "CC Switch.app" \
             --app-drop-link 480 220 \
-            --codesign "$APPLE_SIGNING_IDENTITY" \
+            "${CODESIGN_ARGS[@]}" \
             --no-internet-enable \
             "release-assets/$NEW_DMG" \
             "$DMG_STAGE_DIR"
@@ -350,7 +369,7 @@ jobs:
           echo "✅ Styled DMG created: $NEW_DMG"
 
       - name: Notarize macOS DMG
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && vars.ENABLE_APPLE_SIGNING == 'true'
         shell: bash
         timeout-minutes: 30
         env:
@@ -392,7 +411,7 @@ jobs:
           done
 
       - name: Verify macOS code signing and notarization
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && vars.ENABLE_APPLE_SIGNING == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -608,14 +627,12 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
-          name: CC Switch ${{ github.ref_name }}
+          name: CC Switch Pro ${{ github.ref_name }}
           prerelease: true
           body: |
-            ## CC Switch ${{ github.ref_name }}
+            ## CC Switch Pro ${{ github.ref_name }}
 
-            🌐 **Only Official Website / 唯一官方网站 / 唯一の公式サイト**: [ccswitch.io](https://ccswitch.io)
-
-            Claude Code 供应商切换工具
+            自维护 fork 版本（Claude Code / Codex / Gemini 供应商切换工具，含模型级 Responses/Chat 动态路由）。
 
             ### 下载
 
@@ -628,7 +645,7 @@ jobs:
             > `.tar.gz` 为 Tauri updater 自动更新专用，无需手动下载。
 
             ---
-            macOS 版本已通过 Apple 代码签名和公证，可直接安装使用。
+            ⚠️ macOS 版本未做 Apple 代码签名（fork 无 Developer 证书）。首次打开请**右键点击 → 打开**绕过 Gatekeeper，或在「系统设置 → 隐私与安全性」里点「仍要打开」。功能完全正常，Tauri 自更新走 minisign 签名，独立于 Apple 签名。
           files: release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
