@@ -238,27 +238,34 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         timeout-minutes: 60
+        # Expose the repo variable + secrets to the script so it can decide
+        # whether to export APPLE_* into Tauri's environment. The APPLE_* vars
+        # are deliberately NOT declared here directly — Tauri treats an
+        # empty-but-present APPLE_SIGNING_IDENTITY as "sign with whatever
+        # identity" and fails in the keychain; to build unsigned the variable
+        # must be ABSENT, which the script handles via export/unset.
         env:
-          # Apple code-signing/notarization credentials are only set when
-          # ENABLE_APPLE_SIGNING == 'true'; absent values make Tauri produce an
-          # unsigned .app (still installable via right-click → Open, and the
-          # Tauri updater minisign signature is independent of Apple signing).
-          APPLE_SIGNING_IDENTITY: ${{ vars.ENABLE_APPLE_SIGNING == 'true' && env.APPLE_SIGNING_IDENTITY || '' }}
-          APPLE_ID: ${{ vars.ENABLE_APPLE_SIGNING == 'true' && secrets.APPLE_ID || '' }}
-          APPLE_PASSWORD: ${{ vars.ENABLE_APPLE_SIGNING == 'true' && secrets.APPLE_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ vars.ENABLE_APPLE_SIGNING == 'true' && secrets.APPLE_TEAM_ID || '' }}
+          ENABLE_APPLE_SIGNING: ${{ vars.ENABLE_APPLE_SIGNING }}
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
+          # Only export Apple credentials when signing is explicitly enabled.
+          if [ "${ENABLE_APPLE_SIGNING:-}" = "true" ] && [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
+            echo "🍎 ENABLE_APPLE_SIGNING=true — building signed + notarized macOS app"
+            export APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
+          else
+            echo "ℹ️ ENABLE_APPLE_SIGNING not set — building unsigned macOS app"
+            # Force Tauri to skip codesign entirely by unsetting any inherited
+            # APPLE_SIGNING_IDENTITY (the certificate-import step is guarded too).
+            unset APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID || true
+          fi
           max_attempts=3
           for attempt in $(seq 1 "$max_attempts"); do
-            echo "=== macOS build/notarization attempt ${attempt}/${max_attempts} ==="
-            if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
-              BUILD_ARGS=(--target universal-apple-darwin)
-            else
-              echo "ℹ️ ENABLE_APPLE_SIGNING not set — building unsigned macOS app"
-              BUILD_ARGS=(--target universal-apple-darwin)
-            fi
-            if pnpm tauri build "${BUILD_ARGS[@]}"; then
+            echo "=== macOS build attempt ${attempt}/${max_attempts} ==="
+            if pnpm tauri build --target universal-apple-darwin; then
               echo "✅ macOS build succeeded"
               exit 0
             fi
