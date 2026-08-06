@@ -48,6 +48,10 @@ pub struct ProxyState {
     pub app_handle: Option<tauri::AppHandle>,
     /// 故障转移切换管理器
     pub failover_manager: Arc<FailoverSwitchManager>,
+    /// 曾因拒绝 Codex ChatGPT 私有工具（`web_search`/`image_generation`，
+    /// 400 `Unknown parameter: 'tools[N].name'`）而剥离成功的 provider id 集合。
+    /// 跨请求共享：命中后该 provider 的原生 Responses 请求直接预剥离。
+    pub private_tools_strip_cache: Arc<RwLock<std::collections::HashSet<String>>>,
 }
 
 /// 代理HTTP服务器
@@ -81,6 +85,7 @@ impl ProxyServer {
             codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
             app_handle,
             failover_manager,
+            private_tools_strip_cache: Arc::new(RwLock::new(std::collections::HashSet::new())),
         };
 
         Self {

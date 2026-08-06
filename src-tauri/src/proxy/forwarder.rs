@@ -146,6 +146,11 @@ pub struct RequestForwarder {
     /// `max_attempts = max_retries + 1`，所以 max_retries=0 表示仅尝试一家、
     /// max_retries=3（默认）表示最多 4 家。loop 同时受 providers.len() 自然限制。
     max_attempts: usize,
+    /// 曾因拒绝 Codex ChatGPT 私有工具（`web_search`/`image_generation`，
+    /// 400 `Unknown parameter: 'tools[N].name'`）而剥离成功的 provider id 集合。
+    /// 命中后，该 provider 的后续原生 Responses 请求直接预剥离，不再赌上游
+    /// 网关间歇性行为。由 [`crate::proxy::server::ProxyState`] 共享，跨请求保持。
+    private_tools_strip_cache: Arc<RwLock<std::collections::HashSet<String>>>,
 }
 
 impl RequestForwarder {
@@ -213,6 +218,7 @@ impl RequestForwarder {
         optimizer_config: OptimizerConfig,
         copilot_optimizer_config: CopilotOptimizerConfig,
         max_retries: u32,
+        private_tools_strip_cache: Arc<RwLock<std::collections::HashSet<String>>>,
     ) -> Self {
         // max_retries 是「失败后重试次数」语义，attempt 上限 = retries + 1。
         // saturating_add 防止 u32::MAX + 1 溢出。
@@ -236,6 +242,7 @@ impl RequestForwarder {
                 streaming_first_byte_timeout,
             ),
             max_attempts,
+            private_tools_strip_cache,
         }
     }
 
@@ -419,6 +426,7 @@ impl RequestForwarder {
             let mut rectifier_retried = false;
             let mut budget_rectifier_retried = false;
             let mut media_rectifier_retried = false;
+            let mut private_tools_rectifier_retried = false;
 
             // 上限检查：尊重用户在 AppProxyConfig.max_retries 上配置的「重试次数」。
             // 放在熔断器 allow 检查之前，避免在已经超限时还占用 HalfOpen 探测名额。
@@ -656,6 +664,128 @@ impl RequestForwarder {
                                             app_type_str,
                                             used_half_open_permit,
                                             "media 降级",
+                                            &mut last_error,
+                                            &mut last_provider,
+                                        )
+                                        .await
+                                    {
+                                        return Err(err);
+                                    }
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+
+                    // Codex 原生 Responses 透传：第三方网关（new-api 系 relay 等）
+                    // 间歇性拒绝 ChatGPT 后端私有工具（`web_search` /
+                    // `image_generation`），报 400 `Unknown parameter: 'tools[N].name'`。
+                    // 首次命中后剥掉这两个工具重试一次；成功后缓存该 provider，
+                    // 后续请求直接预剥离（见 `forward()` 内的缓存检查）。
+                    if super::providers::transform_codex_responses_private_tools::
+                        is_chatgpt_private_tools_rejection(&e)
+                        && !private_tools_rectifier_retried
+                        && super::providers::transform_codex_responses_private_tools::
+                            body_has_chatgpt_private_tools(&provider_body)
+                    {
+                        let mut private_tools_body = provider_body.clone();
+                        if super::providers::transform_codex_responses_private_tools::
+                            strip_chatgpt_private_tools(&mut private_tools_body)
+                        {
+                            let _ = std::mem::replace(&mut private_tools_rectifier_retried, true);
+                            log::info!(
+                                "[{app_type_str}] [Codex] Upstream rejected ChatGPT-private tools; retrying provider={} with stripped tools",
+                                provider.id
+                            );
+
+                            match self
+                                .forward(
+                                    app_type,
+                                    &method,
+                                    provider,
+                                    endpoint,
+                                    &private_tools_body,
+                                    &headers,
+                                    &extensions,
+                                    adapter.as_ref(),
+                                )
+                                .await
+                            {
+                                Ok((response, claude_api_format, outbound_model)) => {
+                                    // 缓存剥离结论：后续请求直接预剥离，不再赌上游网关
+                                    self.private_tools_strip_cache
+                                        .write()
+                                        .await
+                                        .insert(provider.id.clone());
+                                    log::info!(
+                                        "[{app_type_str}] [Codex] Private-tools retry succeeded; caching strip for provider={}",
+                                        provider.id
+                                    );
+                                    self.record_success_result(
+                                        &provider.id,
+                                        app_type_str,
+                                        used_half_open_permit,
+                                    )
+                                    .await;
+
+                                    {
+                                        let mut current_providers =
+                                            self.current_providers.write().await;
+                                        current_providers.insert(
+                                            app_type_str.to_string(),
+                                            (provider.id.clone(), provider.name.clone()),
+                                        );
+                                    }
+
+                                    {
+                                        let mut status = self.status.write().await;
+                                        status.success_requests += 1;
+                                        status.last_error = None;
+                                        let should_switch = self
+                                            .current_provider_id_at_start
+                                            .as_str()
+                                            != provider.id.as_str();
+                                        if should_switch {
+                                            status.failover_count += 1;
+                                            let fm = self.failover_manager.clone();
+                                            let ah = self.app_handle.clone();
+                                            let pid = provider.id.clone();
+                                            let pname = provider.name.clone();
+                                            let at = app_type_str.to_string();
+
+                                            tokio::spawn(async move {
+                                                let _ = fm
+                                                    .try_switch(ah.as_ref(), &at, &pid, &pname)
+                                                    .await;
+                                            });
+                                        }
+                                        if status.total_requests > 0 {
+                                            status.success_rate = (status.success_requests
+                                                as f32
+                                                / status.total_requests as f32)
+                                                * 100.0;
+                                        }
+                                    }
+
+                                    return Ok(ForwardResult {
+                                        response,
+                                        provider: provider.clone(),
+                                        claude_api_format,
+                                        outbound_model,
+                                        connection_guard: None,
+                                    });
+                                }
+                                Err(retry_err) => {
+                                    log::warn!(
+                                        "[{app_type_str}] [Codex] Private-tools retry still failed: {retry_err}"
+                                    );
+                                    if let Some(err) = self
+                                        .handle_rectifier_retry_failure(
+                                            retry_err,
+                                            provider,
+                                            app_type_str,
+                                            used_half_open_permit,
+                                            "ChatGPT-private tools 剥离",
                                             &mut last_error,
                                             &mut last_provider,
                                         )
@@ -1595,6 +1725,30 @@ impl RequestForwarder {
                 "[Codex] Sanitized xAI-unsupported Responses fields (provider={})",
                 provider.id
             );
+        }
+
+        // Same native-Responses path: strip ChatGPT-backend-private tools
+        // (`web_search` / `image_generation`) up front for providers that
+        // already proved to reject them (see the response-driven retry in
+        // `forward_with_retry_inner`). Idempotent — stripping a body that has
+        // none is a no-op.
+        if matches!(app_type, AppType::Codex | AppType::GrokBuild)
+            && !codex_responses_to_chat
+            && !codex_responses_to_anthropic
+            && self
+                .private_tools_strip_cache
+                .read()
+                .await
+                .contains(&provider.id)
+        {
+            if super::providers::transform_codex_responses_private_tools::
+                strip_chatgpt_private_tools(&mut request_body)
+            {
+                log::debug!(
+                    "[Codex] Stripped ChatGPT-private tools for native Responses upstream (provider={})",
+                    provider.id
+                );
+            }
         }
 
         if matches!(app_type, AppType::Codex | AppType::GrokBuild) {
@@ -3654,7 +3808,8 @@ mod tests {
             copilot_optimizer_config: CopilotOptimizerConfig::default(),
             non_streaming_timeout,
             streaming_first_byte_timeout,
-            max_attempts: 1,
+            max_attempts: 2,
+            private_tools_strip_cache: Arc::new(RwLock::new(std::collections::HashSet::new())),
         }
     }
 

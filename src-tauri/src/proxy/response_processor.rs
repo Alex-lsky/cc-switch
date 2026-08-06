@@ -1001,6 +1001,7 @@ mod tests {
             codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
             app_handle: None,
             failover_manager: Arc::new(FailoverSwitchManager::new(db)),
+            private_tools_strip_cache: Arc::new(RwLock::new(std::collections::HashSet::new())),
         }
     }
 
