@@ -619,10 +619,16 @@ fn codex_catalog_model_entry(
         }
     }
 
+    // Per-model reasoning effort override: the DB's `reasoningLevels` becomes
+    // `supported_reasoning_levels` and `defaultReasoningLevel` becomes
+    // `default_reasoning_level`. Without this every model inherits the
+    // template's fixed ['none','high'] and the picker shows only "高".
+    apply_reasoning_levels_override(entry_obj, spec);
+
     entry
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct CodexCatalogModelSpec {
     model: String,
     /// Explicit user value only. Entries fall back to the model id — except
@@ -645,6 +651,13 @@ struct CodexCatalogModelSpec {
     /// back to the template default when absent. Only consulted for
     /// `NativeResponses`.
     base_instructions: Option<String>,
+    /// Per-row reasoning effort levels (e.g. ["low","medium","high","xhigh"]).
+    /// Mirrors the catalog's `supported_reasoning_levels`; when omitted the
+    /// template's own levels are kept.
+    reasoning_levels: Option<Vec<String>>,
+    /// Per-row default reasoning effort (e.g. "medium"). Mirrors the catalog's
+    /// `default_reasoning_level`; when omitted the template's default is kept.
+    default_reasoning_level: Option<String>,
 }
 
 fn codex_catalog_model_specs(settings: &Value) -> Vec<CodexCatalogModelSpec> {
@@ -711,6 +724,32 @@ fn codex_catalog_model_specs(settings: &Value) -> Vec<CodexCatalogModelSpec> {
             .filter(|text| !text.is_empty())
             .map(str::to_string);
 
+        // Per-model reasoning effort levels (e.g. ["low","medium","high","xhigh"])
+        // and default effort. Drove "推理强度" options in Codex's model picker;
+        // without this the generated catalog inherits the template's fixed
+        // ['none','high'] and every model shows only "高".
+        let reasoning_levels = model_config
+            .get("reasoningLevels")
+            .or_else(|| model_config.get("reasoning_levels"))
+            .and_then(|value| value.as_array())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item.as_str())
+                    .map(str::trim)
+                    .filter(|level| !level.is_empty())
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            })
+            .filter(|items| !items.is_empty());
+        let default_reasoning_level = model_config
+            .get("defaultReasoningLevel")
+            .or_else(|| model_config.get("default_reasoning_level"))
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|level| !level.is_empty())
+            .map(str::to_string);
+
         specs.push(CodexCatalogModelSpec {
             model: model.to_string(),
             display_name,
@@ -718,6 +757,8 @@ fn codex_catalog_model_specs(settings: &Value) -> Vec<CodexCatalogModelSpec> {
             supports_parallel_tool_calls,
             input_modalities,
             base_instructions,
+            reasoning_levels,
+            default_reasoning_level,
         });
     }
 
@@ -1093,10 +1134,44 @@ fn codex_vendor_catalog_model_entry(
         entry_obj.insert("base_instructions".to_string(), json!(base_instructions));
     }
 
+    // Per-model reasoning effort override, same as the template path: explicit
+    // DB `reasoningLevels`/`defaultReasoningLevel` win over the vendor file.
+    apply_reasoning_levels_override(entry_obj, spec);
+
     // Defensive: if a future codex parser requires a field the vendor file
     // predates, backfill only whitelisted parser-required keys.
     fill_template_fields_from_static(&mut entry);
     entry
+}
+
+/// Override a catalog entry's reasoning effort levels from the per-model DB
+/// config (`reasoningLevels` / `defaultReasoningLevel`).
+///
+/// Catalog shape: `supported_reasoning_levels: [{effort, description}, ...]`
+/// plus `default_reasoning_level: "high"`. DB shape: string arrays/values like
+/// `["low","medium","high","xhigh"]` / `"medium"`. Only writes when the DB
+/// declares at least one level; otherwise the template/vendor entry keeps its
+/// own levels (unchanged behavior).
+fn apply_reasoning_levels_override(entry_obj: &mut serde_json::Map<String, Value>, spec: &CodexCatalogModelSpec) {
+    let Some(levels) = spec.reasoning_levels.as_deref().filter(|levels| !levels.is_empty()) else {
+        return;
+    };
+    let levels_json: Vec<Value> = levels
+        .iter()
+        .map(|effort| {
+            json!({
+                "effort": effort,
+                "description": format!("Reasoning effort: {effort}")
+            })
+        })
+        .collect();
+    entry_obj.insert(
+        "supported_reasoning_levels".to_string(),
+        json!(levels_json),
+    );
+    if let Some(default_level) = spec.default_reasoning_level.as_deref() {
+        entry_obj.insert("default_reasoning_level".to_string(), json!(default_level));
+    }
 }
 
 /// Fields Codex's external-catalog parser REQUIRES (no serde default): when
@@ -3132,6 +3207,7 @@ base_url = "https://production.api/v1"
             supports_parallel_tool_calls: None,
             input_modalities: None,
             base_instructions: None,
+            ..Default::default()
         }];
         let catalog = codex_model_catalog_from_specs(
             &specs,
@@ -3338,6 +3414,7 @@ base_url = "https://production.api/v1"
                 supports_parallel_tool_calls: None,
                 input_modalities: None,
                 base_instructions: None,
+                ..Default::default()
             },
             CodexCatalogModelSpec {
                 model: "deepseek/deepseek-v4-pro".to_string(),
@@ -3346,6 +3423,7 @@ base_url = "https://production.api/v1"
                 supports_parallel_tool_calls: None,
                 input_modalities: None,
                 base_instructions: None,
+                ..Default::default()
             },
             CodexCatalogModelSpec {
                 model: "glm-5.2v".to_string(),
@@ -3354,6 +3432,7 @@ base_url = "https://production.api/v1"
                 supports_parallel_tool_calls: None,
                 input_modalities: None,
                 base_instructions: None,
+                ..Default::default()
             },
             CodexCatalogModelSpec {
                 model: "deepseek-v4-flash".to_string(),
@@ -3362,6 +3441,7 @@ base_url = "https://production.api/v1"
                 supports_parallel_tool_calls: None,
                 input_modalities: Some(vec!["text".to_string(), "image".to_string()]),
                 base_instructions: None,
+                ..Default::default()
             },
             CodexCatalogModelSpec {
                 model: "custom-text-alias".to_string(),
@@ -3370,6 +3450,7 @@ base_url = "https://production.api/v1"
                 supports_parallel_tool_calls: None,
                 input_modalities: Some(vec!["text".to_string()]),
                 base_instructions: None,
+                ..Default::default()
             },
         ];
 
@@ -3640,6 +3721,7 @@ wire_api = "responses"
             supports_parallel_tool_calls: None,
             input_modalities: None,
             base_instructions: None,
+            ..Default::default()
         }];
         // Using a gpt-5.5-shaped template under ProxyChat must NOT strip
         // apply_patch_tool_type. (The native template lacks it, so synthesize
@@ -4254,5 +4336,214 @@ model_catalog_json = "cc-switch-model-catalog.json"
             parsed.get("model_catalog_json").is_none(),
             "None arm should remove relative cc-switch-owned field"
         );
+    }
+
+    #[test]
+    fn catalog_spec_parses_per_model_reasoning_levels() {
+        let settings = json!({
+            "modelCatalog": {
+                "models": [
+                    {
+                        "model": "gpt-5.6-luna",
+                        "reasoningLevels": ["low", "medium", "high", "xhigh"],
+                        "defaultReasoningLevel": "medium"
+                    },
+                    {
+                        "model": "deepseek-v4-flash",
+                        "reasoning_levels": ["low", "high", "xhigh"],
+                        "default_reasoning_level": "high"
+                    },
+                    { "model": "untagged" }
+                ]
+            }
+        });
+        let specs = codex_catalog_model_specs(&settings);
+        assert_eq!(specs.len(), 3);
+        assert_eq!(
+            specs[0].reasoning_levels.as_deref(),
+            Some(&["low".to_string(), "medium".to_string(), "high".to_string(), "xhigh".to_string()][..])
+        );
+        assert_eq!(specs[0].default_reasoning_level.as_deref(), Some("medium"));
+        assert_eq!(
+            specs[1].reasoning_levels.as_deref(),
+            Some(&["low".to_string(), "high".to_string(), "xhigh".to_string()][..])
+        );
+        assert_eq!(specs[1].default_reasoning_level.as_deref(), Some("high"));
+        // 未标注的模型不携带 reasoning 覆盖
+        assert!(specs[2].reasoning_levels.is_none());
+        assert!(specs[2].default_reasoning_level.is_none());
+    }
+
+    #[test]
+    fn catalog_entry_injects_reasoning_levels_override() {
+        let settings = json!({
+            "modelCatalog": {
+                "models": [
+                    {
+                        "model": "gpt-5.6-luna",
+                        "reasoningLevels": ["low", "medium", "high", "xhigh"],
+                        "defaultReasoningLevel": "medium"
+                    },
+                    { "model": "untagged" }
+                ]
+            }
+        });
+        let specs = codex_catalog_model_specs(&settings);
+        let template = load_codex_native_responses_template();
+
+        // 带 reasoningLevels 的模型 → 覆盖模板的 ['none','high']
+        let entry = codex_catalog_model_entry(&template, &specs[0], 0, CodexCatalogToolProfile::NativeResponses, 128_000);
+        let levels = entry["supported_reasoning_levels"]
+            .as_array()
+            .expect("levels array");
+        let efforts: Vec<&str> = levels
+            .iter()
+            .filter_map(|l| l.get("effort").and_then(|v| v.as_str()))
+            .collect();
+        assert_eq!(efforts, vec!["low", "medium", "high", "xhigh"]);
+        assert_eq!(entry["default_reasoning_level"], json!("medium"));
+
+        // 未标注的模型 → 保留模板的 ['none','high']
+        let entry = codex_catalog_model_entry(&template, &specs[1], 1, CodexCatalogToolProfile::NativeResponses, 128_000);
+        let levels = entry["supported_reasoning_levels"]
+            .as_array()
+            .expect("levels array");
+        let efforts: Vec<&str> = levels
+            .iter()
+            .filter_map(|l| l.get("effort").and_then(|v| v.as_str()))
+            .collect();
+        assert_eq!(efforts, vec!["none", "high"]);
+    }
+
+    #[test]
+    fn vendor_catalog_entry_injects_reasoning_levels_override() {
+        let settings = json!({
+            "modelCatalog": {
+                "models": [
+                    {
+                        "model": "deepseek-v4-flash",
+                        "reasoningLevels": ["low", "high", "xhigh"],
+                        "defaultReasoningLevel": "high"
+                    }
+                ]
+            }
+        });
+        let specs = codex_catalog_model_specs(&settings);
+        let vendor_models = load_codex_deepseek_official_catalog_models();
+
+        let entry = codex_vendor_catalog_model_entry(&vendor_models, &specs[0], 0);
+        let levels = entry["supported_reasoning_levels"]
+            .as_array()
+            .expect("levels array");
+        let efforts: Vec<&str> = levels
+            .iter()
+            .filter_map(|l| l.get("effort").and_then(|v| v.as_str()))
+            .collect();
+        // 显式 DB 覆盖优先于 vendor 文件的 low/high/max
+        assert_eq!(efforts, vec!["low", "high", "xhigh"]);
+        assert_eq!(entry["default_reasoning_level"], json!("high"));
+    }
+
+    #[test]
+    fn mezai_style_catalog_keeps_per_model_reasoning_levels() {
+        // 真实 Me-zai 混合网关形状：responses + chat 模型混合，各带 reasoningLevels。
+        let settings = json!({
+            "modelCatalog": {
+                "models": [
+                    {
+                        "model": "gpt-5.6-luna",
+                        "displayName": "gpt-5.6-luna",
+                        "apiFormat": "openai_responses",
+                        "reasoningLevels": ["low", "medium", "high", "xhigh"],
+                        "defaultReasoningLevel": "medium"
+                    },
+                    {
+                        "model": "grok-4.5",
+                        "displayName": "grok-4.5",
+                        "apiFormat": "openai_chat",
+                        "reasoningLevels": ["low", "medium", "high"],
+                        "defaultReasoningLevel": "high"
+                    },
+                    {
+                        "model": "glm-5.2",
+                        "displayName": "glm-5.2",
+                        "apiFormat": "openai_chat",
+                        "reasoningLevels": ["low", "medium", "high"],
+                        "defaultReasoningLevel": "medium"
+                    },
+                    {
+                        "model": "deepseek-v4-flash",
+                        "displayName": "deepseek-v4-flash",
+                        "apiFormat": "openai_responses",
+                        "useOfficialCatalog": "deepseek",
+                        "reasoningLevels": ["low", "high", "xhigh"],
+                        "defaultReasoningLevel": "high"
+                    },
+                    { "model": "untagged-model" }
+                ]
+            }
+        });
+        let config_text = r#"
+model_provider = "custom"
+model = "gpt-5.6-luna"
+
+[model_providers.custom]
+name = "Me-zai"
+base_url = "https://api.mezai.uk/v1"
+wire_api = "responses"
+"#;
+        let catalog = codex_model_catalog_from_settings(
+            &settings,
+            config_text,
+            CodexCatalogToolProfile::NativeResponses,
+        )
+        .expect("catalog generation should not error")
+        .expect("non-empty modelCatalog must yield a catalog");
+
+        let models = catalog["models"].as_array().expect("models array");
+        assert_eq!(models.len(), 5);
+
+        // gpt-5.6-luna：多档 reasoning + 默认 medium
+        let luna = &models[0];
+        let efforts: Vec<&str> = luna["supported_reasoning_levels"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|l| l.get("effort").and_then(|v| v.as_str()))
+            .collect();
+        assert_eq!(efforts, vec!["low", "medium", "high", "xhigh"]);
+        assert_eq!(luna["default_reasoning_level"], json!("medium"));
+
+        // grok-4.5：三档 + 默认 high
+        let grok = &models[1];
+        let efforts: Vec<&str> = grok["supported_reasoning_levels"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|l| l.get("effort").and_then(|v| v.as_str()))
+            .collect();
+        assert_eq!(efforts, vec!["low", "medium", "high"]);
+        assert_eq!(grok["default_reasoning_level"], json!("high"));
+
+        // deepseek-v4-flash：vendor 路径 + DB 覆盖 low/high/xhigh
+        let deepseek = &models[3];
+        let efforts: Vec<&str> = deepseek["supported_reasoning_levels"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|l| l.get("effort").and_then(|v| v.as_str()))
+            .collect();
+        assert_eq!(efforts, vec!["low", "high", "xhigh"]);
+        assert_eq!(deepseek["default_reasoning_level"], json!("high"));
+
+        // 未标注模型：保留模板默认（none/high）
+        let untagged = &models[4];
+        let efforts: Vec<&str> = untagged["supported_reasoning_levels"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|l| l.get("effort").and_then(|v| v.as_str()))
+            .collect();
+        assert_eq!(efforts, vec!["none", "high"]);
     }
 }
