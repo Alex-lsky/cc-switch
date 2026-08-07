@@ -4182,6 +4182,168 @@ wire_api = "responses"
         );
     }
 
+    /// 端到端：模拟用户登录后的完整恢复链路。auth.json 已有新登录态，DB 备份
+    /// 里是旧 tokens（refresh token 单次使用已失效）。走公共恢复入口
+    /// `restore_live_config_for_app_with_fallback`（异常退出恢复 / 更新安装后
+    /// 启动都会走这里），断言 auth.json 不被旧备份覆盖。
+    #[tokio::test]
+    #[serial]
+    async fn codex_restore_via_public_entry_preserves_fresh_login() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+
+        let fresh_login = json!({
+            "auth_mode": "chatgpt",
+            "tokens": {
+                "id_token": "fresh-id",
+                "access_token": "fresh-access",
+                "refresh_token": "fresh-refresh"
+            }
+        });
+        crate::codex_config::write_codex_live_atomic(
+            &fresh_login,
+            Some("model_provider = \"openai\"\n"),
+        )
+        .expect("seed fresh login (user just logged in)");
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db.clone());
+
+        // 异常退出前留下的备份：旧死 tokens
+        let stale_backup = json!({
+            "auth": {
+                "auth_mode": "chatgpt",
+                "last_refresh": "2026-07-21T05:30:52Z",
+                "tokens": {
+                    "id_token": "stale-id",
+                    "access_token": "stale-access",
+                    "refresh_token": "stale-refresh"
+                }
+            },
+            "config": "model_provider = \"openai\"\nmodel = \"gpt-5-codex\"\n"
+        });
+        db.save_live_backup(
+            "codex",
+            &serde_json::to_string(&stale_backup).expect("serialize backup"),
+        )
+        .await
+        .expect("seed stale backup");
+
+        // 走公共恢复入口（异常退出恢复 / 更新安装后启动路径）
+        service
+            .restore_live_config_for_app_with_fallback(&AppType::Codex)
+            .await
+            .expect("restore codex live config");
+
+        let live_auth: Value =
+            crate::config::read_json_file(&crate::codex_config::get_codex_auth_path())
+                .expect("read live auth");
+        assert_eq!(
+            live_auth, fresh_login,
+            "restore must not overwrite a fresh ChatGPT login with stale backup tokens"
+        );
+
+        // config.toml 仍应从备份恢复（model 等）
+        let live_config = std::fs::read_to_string(crate::codex_config::get_codex_config_path())
+            .expect("read live config");
+        assert!(
+            live_config.contains("gpt-5-codex"),
+            "config.toml should still be restored from backup"
+        );
+    }
+
+    /// 端到端：Me-zai（第三方）→ 官方 → Me-zai 来回切换，auth.json 登录态始终
+    /// 不被 API key 覆盖（preserve 默认 true），官方切换也不被 DB 死 tokens
+    /// 覆盖。这是用户报告的核心场景。
+    #[tokio::test]
+    #[serial]
+    async fn codex_round_trip_switches_keep_oauth_login_intact() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+
+        let oauth_login = json!({
+            "auth_mode": "chatgpt",
+            "tokens": {
+                "id_token": "oauth-id",
+                "access_token": "oauth-access",
+                "refresh_token": "oauth-refresh"
+            }
+        });
+        crate::codex_config::write_codex_live_atomic(
+            &oauth_login,
+            Some("model_provider = \"openai\"\n"),
+        )
+        .expect("seed OAuth login");
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db.clone());
+
+        // 第三方 provider（Me-zai）
+        let mezai = Provider::with_id(
+            "mezai".to_string(),
+            "Me-zai".to_string(),
+            json!({
+                "auth": { "OPENAI_API_KEY": "mezai-key" },
+                "config": "model_provider = \"mezai\"\nmodel = \"gpt-5.6-luna\"\n\n[model_providers.mezai]\nname = \"Me-zai\"\nbase_url = \"https://api.mezai.uk/v1\"\nwire_api = \"responses\"\nrequires_openai_auth = true\n"
+            }),
+            None,
+        );
+        db.save_provider("codex", &mezai).expect("save mezai");
+
+        // 官方 provider（DB 里存的是旧死 tokens）
+        let mut official = Provider::with_id(
+            "codex-official".to_string(),
+            "OpenAI Official".to_string(),
+            json!({
+                "auth": {
+                    "auth_mode": "chatgpt",
+                    "tokens": { "access_token": "dead-token", "refresh_token": "dead-refresh" }
+                },
+                "config": "model_provider = \"openai\"\nmodel = \"gpt-5-codex\"\n"
+            }),
+            None,
+        );
+        official.category = Some("official".to_string());
+        official.id = crate::database::CODEX_OFFICIAL_PROVIDER_ID.to_string();
+        db.save_provider("codex", &official).expect("save official");
+
+        // 切到 Me-zai
+        service
+            .write_codex_live_for_provider(&mezai.settings_config, Some(&mezai))
+            .expect("switch to mezai");
+        let auth_after_mezai: Value =
+            crate::config::read_json_file(&crate::codex_config::get_codex_auth_path())
+                .expect("read auth");
+        assert_eq!(
+            auth_after_mezai, oauth_login,
+            "third-party switch must not overwrite OAuth login"
+        );
+
+        // 切回官方
+        service
+            .write_codex_live_for_provider(&official.settings_config, Some(&official))
+            .expect("switch to official");
+        let auth_after_official: Value =
+            crate::config::read_json_file(&crate::codex_config::get_codex_auth_path())
+                .expect("read auth");
+        assert_eq!(
+            auth_after_official, oauth_login,
+            "official switch must keep the fresh auth.json login, not the dead DB tokens"
+        );
+
+        // 再切回 Me-zai
+        service
+            .write_codex_live_for_provider(&mezai.settings_config, Some(&mezai))
+            .expect("switch back to mezai");
+        let auth_after_round_trip: Value =
+            crate::config::read_json_file(&crate::codex_config::get_codex_auth_path())
+                .expect("read auth");
+        assert_eq!(
+            auth_after_round_trip, oauth_login,
+            "OAuth login must survive a full round-trip of switches"
+        );
+    }
+
     #[tokio::test]
     #[serial]
     async fn codex_takeover_preserves_oauth_auth_json_when_preserve_enabled() {
