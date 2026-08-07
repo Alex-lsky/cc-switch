@@ -3948,6 +3948,134 @@ wire_api = "responses"
             .expect("reset settings");
     }
 
+    /// 官方 provider 切换：auth.json 已有新登录态时，不得用 DB 里的旧 tokens
+    /// 覆盖（refresh token 单次使用，DB 里的可能已失效——覆盖后 codex 刷新
+    /// 失败会强制用户重新登录）。
+    #[test]
+    #[serial]
+    fn codex_official_switch_keeps_existing_auth_json_login() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+
+        let fresh_login = json!({
+            "auth_mode": "chatgpt",
+            "tokens": {
+                "id_token": "fresh-id",
+                "access_token": "fresh-access",
+                "refresh_token": "fresh-refresh"
+            }
+        });
+        crate::codex_config::write_codex_live_atomic(
+            &fresh_login,
+            Some("model_provider = \"openai\"\n"),
+        )
+        .expect("seed fresh live login");
+
+        let stale_db_auth = json!({
+            "auth_mode": "chatgpt",
+            "tokens": {
+                "id_token": "stale-id",
+                "access_token": "stale-access",
+                "refresh_token": "stale-refresh"
+            }
+        });
+
+        crate::codex_config::write_codex_live_for_provider(
+            Some("official"),
+            &stale_db_auth,
+            Some("model_provider = \"openai\"\nmodel = \"gpt-5-codex\"\n"),
+        )
+        .expect("switch to official provider");
+
+        let live_auth: Value =
+            crate::config::read_json_file(&crate::codex_config::get_codex_auth_path())
+                .expect("read live auth");
+        assert_eq!(
+            live_auth, fresh_login,
+            "official switch must keep the fresher auth.json login instead of overwriting with stale DB tokens"
+        );
+    }
+
+    /// 官方 provider 切换：auth.json 无登录态时，用 DB 存储的 auth 写回
+    /// （首次接管 / 登出后的恢复路径）。
+    #[test]
+    #[serial]
+    fn codex_official_switch_writes_db_auth_when_auth_json_empty() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+
+        let db_auth = json!({
+            "auth_mode": "chatgpt",
+            "tokens": {
+                "id_token": "stored-id",
+                "access_token": "stored-access"
+            }
+        });
+
+        crate::codex_config::write_codex_live_for_provider(
+            Some("official"),
+            &db_auth,
+            Some("model_provider = \"openai\"\nmodel = \"gpt-5-codex\"\n"),
+        )
+        .expect("switch to official provider");
+
+        let live_auth: Value =
+            crate::config::read_json_file(&crate::codex_config::get_codex_auth_path())
+                .expect("read live auth");
+        assert_eq!(
+            live_auth, db_auth,
+            "official switch without an existing login must write the stored auth back"
+        );
+    }
+
+    /// 第三方 provider 切换默认保留 auth.json 登录态（preserve 默认 true），
+    /// API key 走 config.toml 的 experimental_bearer_token，不再每次冲掉
+    /// ChatGPT OAuth 登录。
+    #[test]
+    #[serial]
+    fn codex_third_party_switch_preserves_auth_json_by_default() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+
+        let oauth_login = json!({
+            "auth_mode": "chatgpt",
+            "tokens": {
+                "id_token": "oauth-id",
+                "access_token": "oauth-access"
+            }
+        });
+        crate::codex_config::write_codex_live_atomic(
+            &oauth_login,
+            Some("model_provider = \"openai\"\n"),
+        )
+        .expect("seed OAuth login");
+
+        let key_auth = json!({ "OPENAI_API_KEY": "third-party-key" });
+        crate::codex_config::write_codex_live_for_provider(
+            Some("custom"),
+            &key_auth,
+            Some(
+                "model_provider = \"rightcode\"\nmodel = \"gpt-5-codex\"\n\n[model_providers.rightcode]\nname = \"RightCode\"\nbase_url = \"https://rightcode.example/v1\"\nwire_api = \"responses\"\n",
+            ),
+        )
+        .expect("switch to third-party provider");
+
+        let live_auth: Value =
+            crate::config::read_json_file(&crate::codex_config::get_codex_auth_path())
+                .expect("read live auth");
+        assert_eq!(
+            live_auth, oauth_login,
+            "third-party switch must keep the ChatGPT login in auth.json by default"
+        );
+
+        let live_config = std::fs::read_to_string(crate::codex_config::get_codex_config_path())
+            .expect("read live config");
+        assert!(
+            live_config.contains("experimental_bearer_token = \"third-party-key\""),
+            "API key should travel via config.toml bearer token"
+        );
+    }
+
     #[tokio::test]
     #[serial]
     async fn codex_takeover_preserves_oauth_auth_json_when_preserve_enabled() {

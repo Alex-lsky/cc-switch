@@ -2106,6 +2106,17 @@ pub fn write_codex_live_for_provider(
         };
     let config_text = unified_official_config.as_deref().or(config_text);
 
+    // 官方 provider：优先保留 auth.json 现有的登录态。用户在 Codex 里重新登录后
+    // auth.json 里的 tokens 是新的，而 DB 里存的可能是失效的旧 tokens（refresh
+    // token 单次使用，刷新后旧的即失效）；若此时还用 DB 的覆盖回去，codex 会因
+    // 刷新失败而强制用户重新登录。仅当 auth.json 无登录材料时才写回 DB 的 auth。
+    if category == Some("official") && codex_auth_has_login_material(auth) {
+        let existing = read_codex_auth_json();
+        if codex_auth_has_login_material(&existing) {
+            return write_codex_live_config_atomic(Some(config_text.unwrap_or("")));
+        }
+    }
+
     let should_write_auth = (category == Some("official") && codex_auth_has_login_material(auth))
         || (category != Some("official")
             && !crate::settings::preserve_codex_official_auth_on_switch());
@@ -2115,6 +2126,17 @@ pub fn write_codex_live_for_provider(
     } else {
         let live_config = prepare_codex_provider_live_config(auth, config_text.unwrap_or(""))?;
         write_codex_live_config_atomic(Some(&live_config))
+    }
+}
+
+/// Read the current `auth.json` contents; missing/unreadable/invalid files
+/// degrade to an empty object so callers can treat "no login material" the
+/// same as "not logged in".
+pub fn read_codex_auth_json() -> Value {
+    let path = get_codex_auth_path();
+    match std::fs::read_to_string(&path) {
+        Ok(text) => serde_json::from_str(&text).unwrap_or_else(|_| Value::Object(Default::default())),
+        Err(_) => Value::Object(Default::default()),
     }
 }
 
