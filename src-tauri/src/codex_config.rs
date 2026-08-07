@@ -384,7 +384,9 @@ pub fn codex_auth_has_login_material(auth: &Value) -> bool {
             return value
                 .as_str()
                 .map(str::trim)
-                .is_some_and(|token| !token.is_empty());
+                .is_some_and(|token| {
+                    !token.is_empty() && token != CODEX_PROXY_AUTH_PLACEHOLDER
+                });
         }
 
         match value {

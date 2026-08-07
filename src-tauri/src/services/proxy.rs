@@ -2999,15 +2999,32 @@ impl ProxyService {
                     let config_path = get_codex_config_path();
                     crate::config::write_text_file(&config_path, cfg)
                         .map_err(|e| format!("写入 Codex config 失败: {e}"))?;
+                } else if crate::codex_config::codex_auth_has_login_material(
+                    &crate::codex_config::read_codex_auth_json(),
+                ) {
+                    // auth.json 已持有登录态（用户重新登录后的新 tokens 或长期
+                    // OAuth 缓存）：恢复流程（更新安装 / 异常退出恢复）不得用
+                    // 备份里的旧 auth 覆盖——备份里的 refresh token 可能早已
+                    // 失效，覆盖后 codex 刷新失败会强制用户重新登录。只写
+                    // config.toml，登录态原样保留。
+                    let config_path = get_codex_config_path();
+                    crate::config::write_text_file(&config_path, cfg)
+                        .map_err(|e| format!("写入 Codex config 失败: {e}"))?;
                 } else {
                     crate::codex_config::write_codex_live_atomic(auth, Some(cfg))
                         .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
                 }
             }
             (Some(auth), None) => {
-                let auth_path = get_codex_auth_path();
-                write_json_file(&auth_path, auth)
-                    .map_err(|e| format!("写入 Codex auth 失败: {e}"))?;
+                // 只写 auth 的分支同样尊重现有登录态：auth.json 已有登录材料
+                // 时不覆盖（备份恢复场景）。
+                if !crate::codex_config::codex_auth_has_login_material(
+                    &crate::codex_config::read_codex_auth_json(),
+                ) {
+                    let auth_path = get_codex_auth_path();
+                    write_json_file(&auth_path, auth)
+                        .map_err(|e| format!("写入 Codex auth 失败: {e}"))?;
+                }
             }
             (None, Some(cfg)) => {
                 let config_path = get_codex_config_path();
@@ -4073,6 +4090,95 @@ wire_api = "responses"
         assert!(
             live_config.contains("experimental_bearer_token = \"third-party-key\""),
             "API key should travel via config.toml bearer token"
+        );
+    }
+
+    /// 恢复流程（更新安装 / 异常退出恢复走 `write_codex_live_verbatim`）不得用
+    /// 备份里的旧 auth 覆盖 auth.json 现有登录态——备份里的 refresh token 可能
+    /// 早已失效（单次使用），覆盖后 codex 刷新失败会强制用户重新登录。
+    #[test]
+    #[serial]
+    fn codex_verbatim_restore_preserves_existing_auth_json_login() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+
+        let fresh_login = json!({
+            "auth_mode": "chatgpt",
+            "tokens": {
+                "id_token": "fresh-id",
+                "access_token": "fresh-access",
+                "refresh_token": "fresh-refresh"
+            }
+        });
+        crate::codex_config::write_codex_live_atomic(
+            &fresh_login,
+            Some("model_provider = \"openai\"\n"),
+        )
+        .expect("seed fresh live login");
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db);
+        let stale_backup = json!({
+            "auth": {
+                "auth_mode": "chatgpt",
+                "tokens": {
+                    "id_token": "stale-id",
+                    "access_token": "stale-access",
+                    "refresh_token": "stale-refresh"
+                }
+            },
+            "config": "model_provider = \"openai\"\nmodel = \"gpt-5-codex\"\n"
+        });
+        service
+            .write_codex_live_verbatim(&stale_backup)
+            .expect("restore from backup");
+
+        let live_auth: Value =
+            crate::config::read_json_file(&crate::codex_config::get_codex_auth_path())
+                .expect("read live auth");
+        assert_eq!(
+            live_auth, fresh_login,
+            "restore must keep the fresher auth.json login instead of overwriting with stale backup tokens"
+        );
+
+        let live_config = std::fs::read_to_string(crate::codex_config::get_codex_config_path())
+            .expect("read live config");
+        assert!(
+            live_config.contains("gpt-5-codex"),
+            "restore should still write config.toml"
+        );
+    }
+
+    /// 恢复流程在 auth.json 无登录态时，用备份的 auth 写回（首次接管 / 登出后）。
+    #[test]
+    #[serial]
+    fn codex_verbatim_restore_writes_auth_when_auth_json_empty() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db);
+        let backup = json!({
+            "auth": {
+                "auth_mode": "chatgpt",
+                "tokens": {
+                    "id_token": "stored-id",
+                    "access_token": "stored-access"
+                }
+            },
+            "config": "model_provider = \"openai\"\nmodel = \"gpt-5-codex\"\n"
+        });
+        service
+            .write_codex_live_verbatim(&backup)
+            .expect("restore from backup");
+
+        let live_auth: Value =
+            crate::config::read_json_file(&crate::codex_config::get_codex_auth_path())
+                .expect("read live auth");
+        assert_eq!(
+            live_auth,
+            backup.get("auth").cloned().expect("backup auth"),
+            "restore without an existing login must write the backup auth back"
         );
     }
 
