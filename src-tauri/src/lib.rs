@@ -1420,6 +1420,7 @@ pub fn run() {
             // per-model upstream interface auto-probe (responses/chat/anthropic)
             commands::probe_codex_model_formats,
             commands::update_provider_model_formats,
+            commands::get_opencode_models,
             // ours: endpoint speed test + custom endpoint management
             commands::test_api_endpoints,
             commands::get_custom_endpoints,

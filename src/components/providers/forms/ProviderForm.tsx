@@ -2507,7 +2507,7 @@ function ProviderFormFull({
               <JsonEditor
                 value={omoDraft.mergedOmoJsonPreview}
                 onChange={() => {}}
-                rows={14}
+                rows={3}
                 showValidation={false}
                 language="json"
                 darkMode={isDarkMode}
@@ -2532,7 +2532,7 @@ function ProviderFormFull({
   },
   "models": {}
 }`}
-                  rows={14}
+                  rows={3}
                   showValidation={true}
                   language="json"
                   darkMode={isDarkMode}
@@ -2563,7 +2563,7 @@ function ProviderFormFull({
   "models": []
 }`
                   }
-                  rows={14}
+                  rows={3}
                   showValidation={true}
                   language="json"
                   darkMode={isDarkMode}
