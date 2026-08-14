@@ -92,6 +92,33 @@ export function useCodexConfigState({ initialData }: UseCodexConfigStateProps) {
                 : typeof item?.base_instructions === "string"
                   ? item.base_instructions
                   : undefined;
+            // 推理强度档位与默认档（驱动 Codex"推理强度"选择器）。历史上
+            // loader 漏读这些字段，导致编辑供应商保存一次就把所有模型的
+            // reasoningLevels 抹掉——catalog 退化成模板的 ['none','high']，
+            // 选择器里只剩"高"。apiFormat 同理（Me-zai 混合网关按模型路由）。
+            const apiFormat =
+              item?.apiFormat === "openai_responses" ||
+              item?.apiFormat === "openai_chat" ||
+              item?.apiFormat === "anthropic"
+                ? item.apiFormat
+                : undefined;
+            const reasoningLevels = Array.isArray(item?.reasoningLevels)
+              ? item.reasoningLevels.filter(
+                  (level: unknown): level is string =>
+                    typeof level === "string" && level.trim() !== "",
+                )
+              : Array.isArray(item?.reasoning_levels)
+                ? item.reasoning_levels.filter(
+                    (level: unknown): level is string =>
+                      typeof level === "string" && level.trim() !== "",
+                  )
+                : undefined;
+            const defaultReasoningLevel =
+              typeof item?.defaultReasoningLevel === "string"
+                ? item.defaultReasoningLevel
+                : typeof item?.default_reasoning_level === "string"
+                  ? item.default_reasoning_level
+                  : undefined;
             return {
               model: typeof item?.model === "string" ? item.model : "",
               displayName:
@@ -113,6 +140,13 @@ export function useCodexConfigState({ initialData }: UseCodexConfigStateProps) {
                 : {}),
               ...(inputModalities ? { inputModalities } : {}),
               ...(baseInstructions ? { baseInstructions } : {}),
+              ...(apiFormat ? { apiFormat } : {}),
+              ...(reasoningLevels && reasoningLevels.length > 0
+                ? { reasoningLevels }
+                : {}),
+              ...(defaultReasoningLevel?.trim()
+                ? { defaultReasoningLevel: defaultReasoningLevel.trim() }
+                : {}),
             };
           })
           .filter((item: CodexCatalogModel) => item.model.trim()),

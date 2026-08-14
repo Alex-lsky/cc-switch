@@ -276,6 +276,13 @@ export interface CodexCatalogModel {
   // Codex requires this field in every catalog entry; when omitted the backend
   // falls back to a neutral default. e.g. MiMo "developed by Xiaomi".
   baseInstructions?: string;
+  // Per-model reasoning effort levels shown in Codex's "推理强度" picker
+  // (e.g. ["low","medium","high","xhigh"]). When omitted the backend infers a
+  // family-appropriate set (gpt → low/medium/high/xhigh, deepseek → low/high/max,
+  // everything else → low/medium/high) instead of collapsing to only "高".
+  reasoningLevels?: string[];
+  // Which of reasoningLevels is selected by default (e.g. "medium").
+  defaultReasoningLevel?: string;
 }
 
 // Claude 认证字段类型

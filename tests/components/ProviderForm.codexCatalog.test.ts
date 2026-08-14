@@ -78,4 +78,42 @@ describe("ProviderForm Codex catalog helpers", () => {
       { model: "mimo-v2.5-pro", supportsParallelToolCalls: false },
     ]);
   });
+
+  it("preserves per-model reasoning levels and default level across the save round-trip", () => {
+    expect(
+      normalizeCodexCatalogModelsForSave([
+        {
+          model: "gpt-5.6-luna",
+          reasoningLevels: ["low", "medium", "high", "xhigh"],
+          defaultReasoningLevel: "medium",
+        },
+        {
+          model: "grok-4.5",
+          // 去重 + 去空白
+          reasoningLevels: ["low", " low ", "high", ""],
+          defaultReasoningLevel: "high",
+        },
+        {
+          model: "kimi-k3",
+          reasoningLevels: ["low", "medium"],
+          // 默认档不在档位列表里 → 丢弃（无法生效）
+          defaultReasoningLevel: "xhigh",
+        },
+        {
+          model: "untagged",
+          reasoningLevels: [],
+          defaultReasoningLevel: "  ",
+        },
+      ]),
+    ).toEqual([
+      {
+        model: "gpt-5.6-luna",
+        reasoningLevels: ["low", "medium", "high", "xhigh"],
+        defaultReasoningLevel: "medium",
+      },
+      { model: "grok-4.5", reasoningLevels: ["low", "high"], defaultReasoningLevel: "high" },
+      { model: "kimi-k3", reasoningLevels: ["low", "medium"] },
+      { model: "untagged" },
+    ]);
+  });
 });

@@ -144,6 +144,14 @@ function createCatalogRow(seed?: Partial<CodexCatalogModel>): CodexCatalogRow {
     ...(seed?.baseInstructions
       ? { baseInstructions: seed.baseInstructions }
       : {}),
+    // 推理强度档位（Codex"推理强度"选择器）同样必须 load->save 保真，
+    // 否则编辑一次就把全部模型的档位抹回只剩"高"。
+    ...(seed?.reasoningLevels && seed.reasoningLevels.length > 0
+      ? { reasoningLevels: [...seed.reasoningLevels] }
+      : {}),
+    ...(seed?.defaultReasoningLevel?.trim()
+      ? { defaultReasoningLevel: seed.defaultReasoningLevel.trim() }
+      : {}),
   };
 }
 
@@ -155,22 +163,28 @@ function catalogRowsMatchModels(
   rows: CodexCatalogModel[],
   models: CodexCatalogModel[],
 ): boolean {
-  if (rows.length !== models.length) return false;
-  return rows.every((row, i) => {
-    const incoming = models[i];
-    return (
-      row.model === (incoming.model ?? "") &&
-      (row.displayName ?? "") === (incoming.displayName ?? "") &&
-      String(row.contextWindow ?? "") ===
-        String(incoming.contextWindow ?? "") &&
-      (row.apiFormat ?? "") === (incoming.apiFormat ?? "") &&
-      (row.supportsParallelToolCalls ?? null) ===
-        (incoming.supportsParallelToolCalls ?? null) &&
-      (row.baseInstructions ?? "") === (incoming.baseInstructions ?? "") &&
-      JSON.stringify(row.inputModalities ?? []) ===
-        JSON.stringify(incoming.inputModalities ?? [])
-    );
-  });
+  return (
+    rows.length === models.length &&
+    rows.every((row, i) => {
+      const incoming = models[i];
+      return (
+        row.model === (incoming.model ?? "") &&
+        (row.displayName ?? "") === (incoming.displayName ?? "") &&
+        String(row.contextWindow ?? "") ===
+          String(incoming.contextWindow ?? "") &&
+        (row.apiFormat ?? "") === (incoming.apiFormat ?? "") &&
+        (row.supportsParallelToolCalls ?? null) ===
+          (incoming.supportsParallelToolCalls ?? null) &&
+        (row.baseInstructions ?? "") === (incoming.baseInstructions ?? "") &&
+        JSON.stringify(row.inputModalities ?? []) ===
+          JSON.stringify(incoming.inputModalities ?? []) &&
+        JSON.stringify(row.reasoningLevels ?? []) ===
+          JSON.stringify(incoming.reasoningLevels ?? []) &&
+        (row.defaultReasoningLevel ?? "") ===
+          (incoming.defaultReasoningLevel ?? "")
+      );
+    })
+  );
 }
 
 export function CodexFormFields({

@@ -625,7 +625,32 @@ fn codex_catalog_model_entry(
     // `supported_reasoning_levels` and `defaultReasoningLevel` becomes
     // `default_reasoning_level`. Without this every model inherits the
     // template's fixed ['none','high'] and the picker shows only "高".
-    apply_reasoning_levels_override(entry_obj, spec);
+    //
+    // Models the user never annotated get a family-appropriate set inferred
+    // here (see `infer_codex_reasoning_levels`) — otherwise a newly added model
+    // would collapse the picker back to a single "高". Inference only applies
+    // to profiles whose template is the degenerate ['none','high']
+    // (NativeResponses / Anthropic); ProxyChat's template already carries the
+    // full low/medium/high/xhigh set, and the official vendor-catalog path
+    // keeps the vendor file authoritative.
+    let inferred_spec;
+    let effective_spec = if spec.reasoning_levels.as_deref().map_or(true, <[String]>::is_empty)
+        && profile != CodexCatalogToolProfile::ProxyChat
+    {
+        let (levels, default_level) = infer_codex_reasoning_levels(&spec.model);
+        inferred_spec = CodexCatalogModelSpec {
+            reasoning_levels: Some(levels.iter().map(|item| item.to_string()).collect()),
+            default_reasoning_level: spec
+                .default_reasoning_level
+                .clone()
+                .or_else(|| Some(default_level.to_string())),
+            ..spec.clone()
+        };
+        &inferred_spec
+    } else {
+        spec
+    };
+    apply_reasoning_levels_override(entry_obj, effective_spec);
 
     entry
 }
@@ -1176,6 +1201,48 @@ fn apply_reasoning_levels_override(entry_obj: &mut serde_json::Map<String, Value
     }
 }
 
+/// Reasoning-effort sets inferred per model family for rows the user never
+/// annotated. Mirrors each vendor's own Codex catalog where one exists, and
+/// the values users had configured by hand on mixed gateways (e.g. Me-zai)
+/// before the provider editor started dropping them:
+///
+/// - OpenAI `gpt-*` / `o1`-`o4` / `*codex*`: Codex's own gpt-5.5 template set
+///   low/medium/high/xhigh, default medium
+/// - DeepSeek: the official DeepSeek Codex catalog low/high/max, default high
+/// - Grok: low/medium/high, default high (hand-tuned on relays that accept it)
+/// - everything else (gemini / claude / kimi / glm / unknown): low/medium/high,
+///   default medium
+///
+/// Inference only ever fills gaps: explicit per-row `reasoningLevels` in the DB
+/// always win, the official vendor-catalog path stays vendor-authoritative,
+/// and ProxyChat keeps its template's own rich set.
+fn infer_codex_reasoning_levels(model: &str) -> (Vec<&'static str>, &'static str) {
+    let lower = model.to_ascii_lowercase();
+    // Strip an optional `vendor/` path segment (e.g. "openai/gpt-5.6") so the
+    // family match sees the bare model id.
+    let bare = lower.rsplit('/').next().unwrap_or(&lower);
+
+    if bare.starts_with("deepseek") {
+        return (
+            vec!["low", "high", "max"],
+            "high",
+        );
+    }
+    if bare.starts_with("grok") {
+        return (vec!["low", "medium", "high"], "high");
+    }
+    let is_openai_family = bare.starts_with("gpt")
+        || bare.starts_with("o1")
+        || bare.starts_with("o3")
+        || bare.starts_with("o4")
+        || bare.contains("codex");
+    if is_openai_family {
+        return (vec!["low", "medium", "high", "xhigh"], "medium");
+    }
+
+    (vec!["low", "medium", "high"], "medium")
+}
+
 /// Fields Codex's external-catalog parser REQUIRES (no serde default): when
 /// one is missing Codex rejects the whole catalog file at startup ("missing
 /// field ..."). `base_instructions` is the other known required field; the
@@ -1636,6 +1703,49 @@ fn build_simplified_catalog_from_texts(config_text: &str, catalog_text: &str) ->
             let inferred = codex_catalog_input_modalities(model, None);
             if !mods.is_empty() && mods != inferred {
                 obj.insert("inputModalities".to_string(), json!(mods));
+            }
+        }
+
+        // Round-trip reasoning levels so a DB-SSOT-missing fallback (e.g. the
+        // provider edited right after a ChatGPT app reinstall) recovers the
+        // per-model "推理强度" settings from the on-disk catalog. Values that
+        // merely equal what `infer_codex_reasoning_levels` would regenerate
+        // are omitted — they'd be re-inferred identically and baking them in
+        // would freeze today's heuristic as if it were explicit user intent.
+        let efforts: Vec<String> = entry
+            .get("supported_reasoning_levels")
+            .and_then(|v| v.as_array())
+            .map(|levels| {
+                levels
+                    .iter()
+                    .filter_map(|l| l.get("effort").and_then(|v| v.as_str()))
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+        if !efforts.is_empty() {
+            let (inferred, inferred_default) = infer_codex_reasoning_levels(model);
+            let inferred: Vec<&str> = inferred;
+            let equals_inferred =
+                efforts.len() == inferred.len()
+                    && efforts
+                        .iter()
+                        .zip(inferred.iter())
+                        .all(|(a, b)| a.eq_ignore_ascii_case(b));
+            let default_level = entry
+                .get("default_reasoning_level")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+            let default_equals_inferred = default_level
+                .as_deref()
+                .is_some_and(|d| d.eq_ignore_ascii_case(inferred_default));
+            if !(equals_inferred && default_equals_inferred) {
+                obj.insert("reasoningLevels".to_string(), json!(efforts));
+                if let Some(default_level) = default_level {
+                    if !default_level.trim().is_empty() {
+                        obj.insert("defaultReasoningLevel".to_string(), json!(default_level));
+                    }
+                }
             }
         }
 
@@ -4631,7 +4741,8 @@ model_catalog_json = "cc-switch-model-catalog.json"
         assert_eq!(efforts, vec!["low", "medium", "high", "xhigh"]);
         assert_eq!(entry["default_reasoning_level"], json!("medium"));
 
-        // 未标注的模型 → 保留模板的 ['none','high']
+        // 未标注的模型 → 家族推导兜底（通用 low/medium/high，默认 medium），
+        // 不再退回模板的 ['none','high']（只剩"高"）
         let entry = codex_catalog_model_entry(&template, &specs[1], 1, CodexCatalogToolProfile::NativeResponses, 128_000);
         let levels = entry["supported_reasoning_levels"]
             .as_array()
@@ -4640,7 +4751,8 @@ model_catalog_json = "cc-switch-model-catalog.json"
             .iter()
             .filter_map(|l| l.get("effort").and_then(|v| v.as_str()))
             .collect();
-        assert_eq!(efforts, vec!["none", "high"]);
+        assert_eq!(efforts, vec!["low", "medium", "high"]);
+        assert_eq!(entry["default_reasoning_level"], json!("medium"));
     }
 
     #[test]
@@ -4764,7 +4876,7 @@ wire_api = "responses"
         assert_eq!(efforts, vec!["low", "high", "xhigh"]);
         assert_eq!(deepseek["default_reasoning_level"], json!("high"));
 
-        // 未标注模型：保留模板默认（none/high）
+        // 未标注模型：家族推导兜底（通用三档，默认 medium），不再是 none/high
         let untagged = &models[4];
         let efforts: Vec<&str> = untagged["supported_reasoning_levels"]
             .as_array()
@@ -4772,6 +4884,162 @@ wire_api = "responses"
             .iter()
             .filter_map(|l| l.get("effort").and_then(|v| v.as_str()))
             .collect();
-        assert_eq!(efforts, vec!["none", "high"]);
+        assert_eq!(efforts, vec!["low", "medium", "high"]);
+        assert_eq!(untagged["default_reasoning_level"], json!("medium"));
+    }
+
+    #[test]
+    fn untagged_models_get_family_inferred_reasoning_levels() {
+        // 用户在混合网关上新加一个模型（未标注推理档位）时，按模型家族
+        // 自动给出合理档位，而不是只剩"高"。
+        let settings = json!({
+            "modelCatalog": {
+                "models": [
+                    { "model": "Gemini 3.7 Flash" },
+                    { "model": "claude-opus-4.6" },
+                    { "model": "gpt-5.6-sol" },
+                    { "model": "grok-4.5" },
+                    { "model": "deepseek-v4-flash" },
+                    { "model": "openai/gpt-5.6-terra" }
+                ]
+            }
+        });
+        let config_text = r#"
+model_provider = "custom"
+model = "Gemini 3.7 Flash"
+
+[model_providers.custom]
+name = "Me-zai"
+base_url = "https://api.mezai.uk/v1"
+wire_api = "responses"
+"#;
+        let catalog = codex_model_catalog_from_settings(
+            &settings,
+            config_text,
+            CodexCatalogToolProfile::NativeResponses,
+        )
+        .expect("catalog generation should not error")
+        .expect("non-empty modelCatalog must yield a catalog");
+
+        let expected: Vec<(&str, Vec<&str>, &str)> = vec![
+            ("Gemini 3.7 Flash", vec!["low", "medium", "high"], "medium"),
+            ("claude-opus-4.6", vec!["low", "medium", "high"], "medium"),
+            ("gpt-5.6-sol", vec!["low", "medium", "high", "xhigh"], "medium"),
+            ("grok-4.5", vec!["low", "medium", "high"], "high"),
+            ("deepseek-v4-flash", vec!["low", "high", "max"], "high"),
+            ("openai/gpt-5.6-terra", vec!["low", "medium", "high", "xhigh"], "medium"),
+        ];
+        for (entry, (slug, levels, default)) in catalog["models"].as_array().unwrap().iter().zip(expected) {
+            assert_eq!(entry.get("slug").and_then(|v| v.as_str()), Some(slug));
+            let efforts: Vec<&str> = entry["supported_reasoning_levels"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(|l| l.get("effort").and_then(|v| v.as_str()))
+                .collect();
+            assert_eq!(efforts, levels, "levels for {slug}");
+            assert_eq!(entry["default_reasoning_level"], json!(default), "default for {slug}");
+        }
+    }
+
+    #[test]
+    fn explicit_reasoning_levels_beat_inference_and_proxychat_keeps_template() {
+        let template = load_codex_native_responses_template();
+        // 显式 DB 覆盖优先于家族推导
+        let spec = CodexCatalogModelSpec {
+            model: "grok-4.5".to_string(),
+            reasoning_levels: Some(vec!["minimal".to_string(), "low".to_string(), "high".to_string()]),
+            default_reasoning_level: None,
+            ..Default::default()
+        };
+        let entry = codex_catalog_model_entry(&template, &spec, 0, CodexCatalogToolProfile::NativeResponses, 128_000);
+        let efforts: Vec<&str> = entry["supported_reasoning_levels"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|l| l.get("effort").and_then(|v| v.as_str()))
+            .collect();
+        assert_eq!(efforts, vec!["minimal", "low", "high"]);
+
+        // ProxyChat 保持模板自身档位（不推导）
+        let spec = CodexCatalogModelSpec {
+            model: "random-relay-model".to_string(),
+            ..Default::default()
+        };
+        let proxy_template = json!({
+            "slug": "__cc_switch_template__",
+            "supported_reasoning_levels": [
+                { "effort": "low" }, { "effort": "medium" }, { "effort": "high" }, { "effort": "xhigh" }
+            ],
+            "default_reasoning_level": "medium",
+            "base_instructions": "neutral"
+        });
+        let entry = codex_catalog_model_entry(&proxy_template, &spec, 0, CodexCatalogToolProfile::ProxyChat, 128_000);
+        let efforts: Vec<&str> = entry["supported_reasoning_levels"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|l| l.get("effort").and_then(|v| v.as_str()))
+            .collect();
+        assert_eq!(efforts, vec!["low", "medium", "high", "xhigh"]);
+    }
+
+    #[test]
+    fn simplified_round_trip_recovers_custom_reasoning_levels() {
+        // DB SSOT 丢失时，从 live catalog 反解要能带回用户自定义档位；
+        // 与推导结果一致的档位则省略（重新生成时会得到一样的值）。
+        let config_text = "model_context_window = 128000";
+        let catalog_text = r#"{
+            "models": [
+                {
+                    "slug": "grok-4.5",
+                    "display_name": "grok-4.5",
+                    "supported_reasoning_levels": [
+                        { "effort": "low" }, { "effort": "medium" }, { "effort": "high" }
+                    ],
+                    "default_reasoning_level": "high"
+                },
+                {
+                    "slug": "gpt-5.6-sol",
+                    "display_name": "gpt-5.6-sol",
+                    "supported_reasoning_levels": [
+                        { "effort": "low" }, { "effort": "medium" }, { "effort": "high" }, { "effort": "xhigh" }
+                    ],
+                    "default_reasoning_level": "medium"
+                }
+            ]
+        }"#;
+        let simplified = build_simplified_catalog_from_texts(config_text, catalog_text)
+            .expect("simplified catalog");
+        let models = simplified["models"].as_array().unwrap();
+
+        // grok-4.5: 推断为 low/medium/high 默认 high —— 与推断一致 → 省略
+        assert!(models[0].get("reasoningLevels").is_none());
+        assert!(models[0].get("defaultReasoningLevel").is_none());
+
+        // gpt-5.6-sol: 推断为 low/medium/high/xhigh 默认 medium —— 一致 → 省略
+        assert!(models[1].get("reasoningLevels").is_none());
+
+        // 自定义档位（与推断不同）必须保留
+        let catalog_text = r#"{
+            "models": [
+                {
+                    "slug": "kimi-k3",
+                    "display_name": "kimi-k3",
+                    "supported_reasoning_levels": [
+                        { "effort": "none" }, { "effort": "low" }, { "effort": "high" }
+                    ],
+                    "default_reasoning_level": "low"
+                }
+            ]
+        }"#;
+        let simplified = build_simplified_catalog_from_texts(config_text, catalog_text)
+            .expect("simplified catalog");
+        let models = simplified["models"].as_array().unwrap();
+        assert_eq!(
+            models[0]["reasoningLevels"],
+            json!(["none", "low", "high"])
+        );
+        assert_eq!(models[0]["defaultReasoningLevel"], json!("low"));
     }
 }

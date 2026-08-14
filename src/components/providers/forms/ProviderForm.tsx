@@ -161,6 +161,17 @@ export const normalizeCodexCatalogModelsForSave = (
 
     const baseInstructions = item.baseInstructions?.trim();
 
+    // 推理强度档位清洗：去空白、去重、过滤空串。档位与默认档必须
+    // load->save 保真——历史上这里漏写导致编辑供应商一次就把所有
+    // 模型的推理档位抹掉，Codex 选择器退化成只剩"高"。
+    const reasoningLevels = item.reasoningLevels
+      ?.map((level) => level.trim())
+      .filter((level, index, arr) => level && arr.indexOf(level) === index);
+    const defaultReasoningLevel = item.defaultReasoningLevel?.trim();
+    const hasDefault =
+      defaultReasoningLevel !== undefined &&
+      reasoningLevels?.includes(defaultReasoningLevel) === true;
+
     normalized.push({
       model,
       ...(displayName ? { displayName } : {}),
@@ -177,6 +188,10 @@ export const normalizeCodexCatalogModelsForSave = (
         ? { inputModalities }
         : {}),
       ...(baseInstructions ? { baseInstructions } : {}),
+      ...(reasoningLevels && reasoningLevels.length > 0
+        ? { reasoningLevels }
+        : {}),
+      ...(hasDefault ? { defaultReasoningLevel } : {}),
     });
   }
 
