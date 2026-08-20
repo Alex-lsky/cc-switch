@@ -309,6 +309,11 @@
       "message": "故障转移是一项高级功能，启用前请确保您已了解其工作原理。\n\n建议先在故障转移队列中配置好供应商优先级。",
       "confirm": "我已了解，继续启用"
     },
+    "resetCodexState": {
+      "title": "重置 Codex 登录状态？",
+      "message": "此操作会关闭 Codex 路由接管、切换到 OpenAI Official，并删除 auth.json。当前 ChatGPT 登录和第三方 API Key 都会被清除，之后需要重新登录 Codex。会话历史、供应商配置和 MCP 配置不会删除。",
+      "confirm": "确认重置"
+    },
     "unifyCodexHistory": {
       "title": "统一 Codex 会话历史",
       "message": "开启后，官方订阅与第三方将共用同一个会话历史列表。注意：跨供应商继续旧会话时，可能因对方后端无法解密 encrypted_content 推理内容而失败。\n\n可选择同时把现有官方会话历史迁入共享列表（迁移前自动备份到 ~/.cc-switch/backups，关闭开关时可选择恢复）。",
@@ -705,6 +710,13 @@
     "codexAuth": "Codex 应用增强",
     "preserveCodexOfficialAuthOnSwitch": "非接管切换时保留官方登录",
     "preserveCodexOfficialAuthOnSwitchDescription": "控制未开启路由接管时切换第三方供应商是否保留 Codex 官方登录；路由接管期间始终保留",
+    "resetCodexState": "重置 Codex 登录状态",
+    "resetCodexStateDescription": "关闭 Codex 路由接管、切回 OpenAI Official，并清除当前登录凭据。用于修复卡在第三方 API Key、无法注销或无法恢复官方登录的状态。",
+    "resetCodexStateAction": "重置状态",
+    "resetCodexStateRunning": "正在重置",
+    "resetCodexStateCompleted": "Codex 状态已重置，请重新启动 Codex 并登录官方账号",
+    "resetCodexStateCompletedNoAuth": "Codex 已切回官方状态；未发现登录文件，请重新启动 Codex 登录",
+    "resetCodexStateFailed": "重置 Codex 状态失败，请关闭 Codex 后重试",
     "unifyCodexSessionHistory": "统一 Codex 会话历史",
     "unifyCodexSessionHistoryDescription": "开启后，官方订阅将以共享的 custom 供应商标识运行，官方与第三方会话出现在同一历史列表中，并可选择把现有官方会话一并迁入（迁移前自动备份）。关闭开关时可按备份恢复迁入的会话。注意：跨供应商继续旧会话时，对方后端可能无法解密会话中的 encrypted_content 推理内容，导致继续失败",
     "unifyCodexHistoryRestoreCompleted": "已按备份还原官方会话历史（{{files}} 个会话文件、{{rows}} 条索引记录）",

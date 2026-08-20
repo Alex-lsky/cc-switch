@@ -1375,6 +1375,7 @@ pub fn run() {
             commands::ensure_codex_official_provider,
             commands::ensure_grokbuild_official_provider,
             commands::get_claude_config_status,
+            commands::reset_codex_state,
             commands::get_config_status,
             commands::get_claude_code_config_path,
             commands::get_config_dir,

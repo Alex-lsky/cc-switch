@@ -41,7 +41,7 @@ pub use mcp::McpService;
 pub use omo::OmoService;
 pub use prompt::PromptService;
 pub use provider::{ProviderService, ProviderSortUpdate, SwitchResult};
-pub use proxy::ProxyService;
+pub use proxy::{CodexStateResetResult, ProxyService};
 #[allow(unused_imports)]
 pub use skill::{DiscoverableSkill, Skill, SkillRepo, SkillService};
 pub use speedtest::{EndpointLatency, SpeedtestService};

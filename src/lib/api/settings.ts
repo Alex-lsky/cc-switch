@@ -26,6 +26,12 @@ export interface CodexUnifyHistoryRestoreResult {
   skippedReason?: string;
 }
 
+export interface CodexStateResetResult {
+  takeoverDisabled: boolean;
+  authRemoved: boolean;
+  providerId: string;
+}
+
 export interface WebDavSyncResult {
   status: string;
 }
@@ -47,6 +53,14 @@ export const settingsApi = {
   /** 按迁移备份账本把当时迁入共享桶的官方会话还原回 openai 桶（幂等） */
   async restoreCodexUnifiedHistory(): Promise<CodexUnifyHistoryRestoreResult> {
     return await invoke("restore_codex_unified_history");
+  },
+
+  /**
+   * 关闭 Codex 路由接管、切回内置 OpenAI Official，并删除 auth.json，
+   * 让 Codex 下次启动时重新进入官方登录流程。
+   */
+  async resetCodexState(): Promise<CodexStateResetResult> {
+    return await invoke("reset_codex_state");
   },
 
   async restart(): Promise<boolean> {

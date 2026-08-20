@@ -309,6 +309,11 @@
       "message": "Failover is an advanced feature. Please make sure you understand how it works before enabling.\n\nWe recommend configuring provider priorities in the failover queue first.",
       "confirm": "I understand, enable"
     },
+    "resetCodexState": {
+      "title": "Reset Codex sign-in state?",
+      "message": "This disables Codex takeover routing, switches to OpenAI Official, and deletes auth.json. Both the current ChatGPT login and third-party API key will be cleared, so you will need to sign in to Codex again. Session history, provider configurations, and MCP settings are not deleted.",
+      "confirm": "Reset state"
+    },
     "unifyCodexHistory": {
       "title": "Unified Codex session history",
       "message": "When enabled, the official subscription and third-party providers share one session history list. Note: resuming an old session across providers may fail because its encrypted_content reasoning cannot be decrypted by another backend.\n\nYou can also migrate your existing official session history into the shared list (originals are backed up to ~/.cc-switch/backups first and can be restored when you turn this off).",
@@ -705,6 +710,13 @@
     "codexAuth": "Codex App Enhancements",
     "preserveCodexOfficialAuthOnSwitch": "Keep official login for direct switches",
     "preserveCodexOfficialAuthOnSwitchDescription": "Controls third-party switches when local routing is off. Takeover routing always preserves the Codex official login.",
+    "resetCodexState": "Reset Codex sign-in state",
+    "resetCodexStateDescription": "Disable Codex takeover routing, switch to OpenAI Official, and clear the current credentials. Use this when Codex is stuck on a third-party API key or cannot restore the official login.",
+    "resetCodexStateAction": "Reset state",
+    "resetCodexStateRunning": "Resetting",
+    "resetCodexStateCompleted": "Codex state was reset. Restart Codex and sign in to your official account again.",
+    "resetCodexStateCompletedNoAuth": "Codex was returned to the official state. No auth file was found; restart Codex to sign in.",
+    "resetCodexStateFailed": "Failed to reset Codex state. Close Codex and try again.",
     "unifyCodexSessionHistory": "Unified Codex session history",
     "unifyCodexSessionHistoryDescription": "When enabled, the official subscription runs under the shared \"custom\" provider id so official and third-party sessions appear in one history list, optionally migrating existing official sessions in (backed up first). When turning it off, the migrated sessions can be restored from backup. Note: resuming an old session across providers may fail because its encrypted_content reasoning can only be decrypted by the backend that created it.",
     "unifyCodexHistoryRestoreCompleted": "Official session history restored from backup ({{files}} session files, {{rows}} index rows)",

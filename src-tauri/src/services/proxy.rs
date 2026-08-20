@@ -3,7 +3,7 @@
 //! 提供代理服务器的启动、停止和配置管理
 
 use crate::app_config::AppType;
-use crate::config::{get_claude_settings_path, read_json_file, write_json_file};
+use crate::config::{delete_file, get_claude_settings_path, read_json_file, write_json_file};
 use crate::database::Database;
 use crate::provider::Provider;
 use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
@@ -15,6 +15,7 @@ use crate::services::provider::{
     build_effective_settings_with_common_config,
     write_live_with_common_config_for_codex_oauth_manager,
 };
+use serde::Serialize;
 use serde_json::{json, Map, Value};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -400,6 +401,14 @@ pub struct HotSwitchOutcome {
     pub logical_target_changed: bool,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexStateResetResult {
+    pub takeover_disabled: bool,
+    pub auth_removed: bool,
+    pub provider_id: String,
+}
+
 impl ProxyService {
     pub fn new(db: Arc<Database>) -> Self {
         let codex_oauth_manager =
@@ -419,6 +428,177 @@ impl ProxyService {
             app_handle: Arc::new(RwLock::new(None)),
             switch_locks: SwitchLockManager::new(),
         }
+    }
+
+    /// Reset Codex to a clean built-in official-login state.
+    ///
+    /// This is an explicit recovery action for mixed states where live
+    /// `config.toml` points at the official provider/local route while
+    /// `auth.json` still contains a third-party API key. It deliberately logs
+    /// Codex out by deleting `auth.json`; a missing file is what makes Codex
+    /// show its normal login flow, whereas writing `{}` can leave it in a
+    /// token-less ChatGPT mode.
+    pub async fn reset_codex_state(&self) -> Result<CodexStateResetResult, String> {
+        let app_type = AppType::Codex;
+        let app_type_str = app_type.as_str();
+
+        let initial_proxy_config = self
+            .db
+            .get_proxy_config_for_app(app_type_str)
+            .await
+            .map_err(|e| format!("读取 Codex 路由状态失败: {e}"))?;
+        let initial_had_backup = self
+            .db
+            .get_live_backup(app_type_str)
+            .await
+            .map_err(|e| format!("读取 Codex Live 备份失败: {e}"))?
+            .is_some();
+        let initial_live_taken_over = self.detect_takeover_in_live_config_for_app(&app_type);
+        let takeover_disabled =
+            initial_proxy_config.enabled || initial_had_backup || initial_live_taken_over;
+
+        // Use the regular disable path first so a valid pre-takeover backup is
+        // restored before the reset overwrites live config with the official
+        // provider. This also stops the proxy when Codex was the final takeover.
+        if initial_proxy_config.enabled {
+            if let Err(error) = self.set_takeover_for_app(app_type_str, false).await {
+                // The normal disable path can fail on exactly the corrupted
+                // backup/live state this recovery action exists to repair.
+                log::warn!("常规关闭 Codex 路由接管失败，将继续强制重置: {error}");
+            }
+        }
+
+        // Serialize the remaining recovery with provider switches. The enabled
+        // flag may already be false while a crash left a backup or placeholder
+        // behind, so clean those states unconditionally under the same lock.
+        let _guard = self.switch_locks.lock_for_app(app_type_str).await;
+        let residual_backup = self
+            .db
+            .get_live_backup(app_type_str)
+            .await
+            .map_err(|e| format!("读取 Codex 残留备份失败: {e}"))?
+            .is_some();
+        let residual_takeover = self.detect_takeover_in_live_config_for_app(&app_type);
+        if residual_backup || residual_takeover {
+            // A reset must remain usable even when the stale backup itself is
+            // malformed. Restoration is best-effort because the official live
+            // snapshot below is the authoritative recovery result.
+            if let Err(error) = self
+                .restore_live_config_for_app_with_fallback_inner(&app_type)
+                .await
+            {
+                log::warn!("忽略 Codex 残留 Live 备份恢复失败并继续重置: {error}");
+            }
+            self.db
+                .delete_live_backup(app_type_str)
+                .await
+                .map_err(|e| format!("删除 Codex Live 备份失败: {e}"))?;
+        }
+
+        // Preserve user-owned MCP sections from whichever live snapshot is
+        // available after takeover cleanup. DB-managed common config is merged
+        // separately below.
+        let existing_live = self.read_codex_live().ok();
+
+        let mut proxy_config = self
+            .db
+            .get_proxy_config_for_app(app_type_str)
+            .await
+            .map_err(|e| format!("读取 Codex 路由配置失败: {e}"))?;
+        if proxy_config.enabled {
+            proxy_config.enabled = false;
+            self.db
+                .update_proxy_config_for_app(proxy_config)
+                .await
+                .map_err(|e| format!("关闭 Codex 路由接管失败: {e}"))?;
+        }
+        self.db
+            .clear_provider_health_for_app(app_type_str)
+            .await
+            .map_err(|e| format!("清除 Codex 路由健康状态失败: {e}"))?;
+
+        self.db
+            .ensure_official_seed_by_id(crate::database::CODEX_OFFICIAL_PROVIDER_ID, AppType::Codex)
+            .map_err(|e| format!("创建 OpenAI Official 供应商失败: {e}"))?;
+        let official = self
+            .db
+            .get_provider_by_id(crate::database::CODEX_OFFICIAL_PROVIDER_ID, app_type_str)
+            .map_err(|e| format!("读取 OpenAI Official 供应商失败: {e}"))?
+            .ok_or_else(|| "OpenAI Official 供应商不存在".to_string())?;
+
+        // Rebuild config.toml from the official provider plus the shared Codex
+        // snippet. Force common-config projection for the empty official seed,
+        // then merge any manually maintained live MCP sections as well.
+        let mut official_live = official.clone();
+        official_live
+            .meta
+            .get_or_insert_with(Default::default)
+            .common_config_enabled = Some(true);
+        if let Some(existing_live) = existing_live.as_ref() {
+            Self::preserve_toml_mcp_servers_from_existing_config(
+                &mut official_live.settings_config,
+                existing_live,
+            )?;
+        }
+        let auth_path = crate::codex_config::get_codex_auth_path();
+        let auth_removed = auth_path.exists() || self.codex_oauth_manager.is_authenticated().await;
+        self.codex_oauth_manager
+            .clear_auth()
+            .await
+            .map_err(|e| format!("清除 Codex OAuth 账号失败: {e}"))?;
+        write_live_with_common_config_for_codex_oauth_manager(
+            self.db.as_ref(),
+            &app_type,
+            &official_live,
+            &self.codex_oauth_manager,
+        )
+        .map_err(|e| format!("写入 Codex 官方配置失败: {e}"))?;
+
+        delete_file(&auth_path).map_err(|e| format!("删除 Codex auth.json 失败: {e}"))?;
+
+        let previous_local_provider = crate::settings::get_current_provider(&app_type);
+        crate::settings::set_current_provider(
+            &app_type,
+            Some(crate::database::CODEX_OFFICIAL_PROVIDER_ID),
+        )
+        .map_err(|e| format!("更新 Codex 当前供应商失败: {e}"))?;
+        if let Err(error) = self
+            .db
+            .set_current_provider(app_type_str, crate::database::CODEX_OFFICIAL_PROVIDER_ID)
+        {
+            let _ = crate::settings::set_current_provider(
+                &app_type,
+                previous_local_provider.as_deref(),
+            );
+            return Err(format!("更新 Codex 数据库当前供应商失败: {error}"));
+        }
+
+        if let Some(server) = self.server.read().await.as_ref() {
+            server
+                .set_active_target(app_type_str, &official.id, &official.name)
+                .await;
+        }
+
+        if !self
+            .db
+            .is_live_takeover_active()
+            .await
+            .map_err(|e| format!("检查剩余路由接管状态失败: {e}"))?
+        {
+            let _ = self.db.set_live_takeover_active(false).await;
+            if self.is_running().await {
+                let _ = self.stop().await;
+            }
+        }
+
+        log::info!(
+            "Codex state reset completed: takeover_disabled={takeover_disabled}, auth_removed={auth_removed}"
+        );
+        Ok(CodexStateResetResult {
+            takeover_disabled,
+            auth_removed,
+            provider_id: official.id,
+        })
     }
 
     #[cfg(test)]
@@ -4096,6 +4276,126 @@ mod tests {
             .expect("serialize models_cache"),
         )
         .expect("write models_cache.json");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn reset_codex_state_restores_official_login_and_preserves_mcp() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+        crate::settings::update_settings(crate::settings::AppSettings::default())
+            .expect("reset settings");
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        db.set_config_snippet(
+            "codex",
+            Some(
+                "disable_response_storage = true
+"
+                .to_string(),
+            ),
+        )
+        .expect("set common config");
+        let service = ProxyService::new(db.clone());
+
+        let mezai = Provider::with_id(
+            "mezai".to_string(),
+            "MezAI".to_string(),
+            json!({
+                "auth": { "OPENAI_API_KEY": "mezai-key" },
+                "config": r#"model_provider = "mezai"
+model = "mezai-model"
+
+[model_providers.mezai]
+base_url = "https://api.mezai.example/v1"
+wire_api = "responses"
+"#
+            }),
+            None,
+        );
+        db.save_provider("codex", &mezai)
+            .expect("save MezAI provider");
+        db.set_current_provider("codex", "mezai")
+            .expect("set DB current provider");
+        crate::settings::set_current_provider(&AppType::Codex, Some("mezai"))
+            .expect("set local current provider");
+
+        crate::codex_config::write_codex_live_atomic(
+            &json!({ "OPENAI_API_KEY": "mezai-key" }),
+            Some(
+                r#"model_provider = "mezai"
+model = "mezai-model"
+
+[model_providers.mezai]
+base_url = "https://api.mezai.example/v1"
+wire_api = "responses"
+experimental_bearer_token = "mezai-key"
+
+[mcp_servers.echo]
+command = "npx"
+args = ["echo-server"]
+"#,
+            ),
+        )
+        .expect("seed stuck Codex live state");
+        // A malformed residual backup must not prevent an explicit recovery.
+        db.save_live_backup("codex", "{not-json")
+            .await
+            .expect("seed malformed backup");
+
+        let result = service
+            .reset_codex_state()
+            .await
+            .expect("reset Codex state");
+
+        assert!(result.takeover_disabled);
+        assert!(result.auth_removed);
+        assert_eq!(
+            result.provider_id,
+            crate::database::CODEX_OFFICIAL_PROVIDER_ID
+        );
+        assert!(
+            !crate::codex_config::get_codex_auth_path().exists(),
+            "auth.json should be deleted so Codex shows its login flow"
+        );
+
+        let live_config = std::fs::read_to_string(crate::codex_config::get_codex_config_path())
+            .expect("read reset config.toml");
+        assert!(!live_config.contains("mezai"));
+        assert!(!live_config.contains("mezai-key"));
+        assert!(!live_config.contains(PROXY_TOKEN_PLACEHOLDER));
+        assert!(live_config.contains("disable_response_storage = true"));
+        assert!(live_config.contains("[mcp_servers.echo]"));
+
+        assert_eq!(
+            db.get_current_provider("codex")
+                .expect("get DB current provider")
+                .as_deref(),
+            Some(crate::database::CODEX_OFFICIAL_PROVIDER_ID)
+        );
+        assert_eq!(
+            crate::settings::get_current_provider(&AppType::Codex).as_deref(),
+            Some(crate::database::CODEX_OFFICIAL_PROVIDER_ID)
+        );
+        assert!(
+            db.get_provider_by_id("mezai", "codex")
+                .expect("read MezAI provider")
+                .is_some(),
+            "reset should preserve configured third-party providers"
+        );
+        assert!(
+            db.get_live_backup("codex")
+                .await
+                .expect("read live backup")
+                .is_none(),
+            "residual takeover backup should be removed"
+        );
+        assert!(
+            !db.get_proxy_config_for_app("codex")
+                .await
+                .expect("read proxy config")
+                .enabled
+        );
     }
 
     #[test]

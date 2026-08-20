@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
@@ -13,6 +13,25 @@ use crate::store::AppState;
 #[tauri::command]
 pub async fn get_claude_config_status() -> Result<ConfigStatus, String> {
     Ok(config::get_claude_config_status())
+}
+
+/// Reset Codex routing/auth state and return it to the built-in official
+/// provider. This intentionally removes auth.json so Codex asks the user to
+/// sign in again instead of remaining stuck on a third-party API key.
+#[tauri::command]
+pub async fn reset_codex_state(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<crate::services::CodexStateResetResult, String> {
+    let result = state.proxy_service.reset_codex_state().await?;
+    let _ = app.emit(
+        "provider-switched",
+        serde_json::json!({
+            "appType": "codex",
+            "providerId": result.provider_id,
+        }),
+    );
+    Ok(result)
 }
 
 use std::str::FromStr;
