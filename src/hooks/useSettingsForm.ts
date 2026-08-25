@@ -78,6 +78,12 @@ export function useSettingsForm(): UseSettingsFormResult {
   );
 
   const initialLanguageRef = useRef<Language>("zh");
+  // Language changes can cause react-i18next to replace the hook context and
+  // recreate callback dependencies. Do not treat that rerender as fresh server
+  // data, otherwise unsaved/reset form values are overwritten by the query
+  // snapshot immediately after syncLanguage(). React Query data is immutable,
+  // so reference identity is the correct initialization boundary here.
+  const initializedDataRef = useRef<Settings | null>(null);
 
   const readPersistedLanguage = useCallback((): Language => {
     if (typeof window !== "undefined") {
@@ -101,7 +107,8 @@ export function useSettingsForm(): UseSettingsFormResult {
 
   // 初始化设置数据
   useEffect(() => {
-    if (!data) return;
+    if (!data || initializedDataRef.current === data) return;
+    initializedDataRef.current = data;
 
     const normalizedLanguage = normalizeLanguage(
       data.language ?? readPersistedLanguage(),
@@ -198,9 +205,11 @@ export function useSettingsForm(): UseSettingsFormResult {
       };
 
       setSettingsState(normalized);
-      syncLanguage(initialLanguageRef.current);
+      // Reset is an explicit restore action, so force the original language even
+      // when react-i18next's current hook instance already reports it.
+      void i18n.changeLanguage(initialLanguageRef.current);
     },
-    [readPersistedLanguage, syncLanguage],
+    [i18n, readPersistedLanguage],
   );
 
   return {
