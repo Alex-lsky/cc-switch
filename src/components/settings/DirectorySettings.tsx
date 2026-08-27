@@ -1,8 +1,11 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { FolderSearch, Undo2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
+import { isWindows } from "@/lib/platform";
+import { settingsApi } from "@/lib/api/settings";
+import { toast } from "sonner";
 import type { AppId } from "@/lib/api";
 import type { ResolvedDirectories } from "@/hooks/useSettings";
 
@@ -98,6 +101,7 @@ export function DirectorySettings({
         <DirectoryInput
           label={t("settings.claudeConfigDir")}
           description={undefined}
+          wslSubdir=".claude"
           value={claudeDir}
           resolvedValue={resolvedDirs.claude}
           placeholder={t("settings.browsePlaceholderClaude")}
@@ -109,6 +113,7 @@ export function DirectorySettings({
         <DirectoryInput
           label={t("settings.codexConfigDir")}
           description={undefined}
+          wslSubdir=".codex"
           value={codexDir}
           resolvedValue={resolvedDirs.codex}
           placeholder={t("settings.browsePlaceholderCodex")}
@@ -120,6 +125,7 @@ export function DirectorySettings({
         <DirectoryInput
           label={t("settings.geminiConfigDir")}
           description={undefined}
+          wslSubdir=".gemini"
           value={geminiDir}
           resolvedValue={resolvedDirs.gemini}
           placeholder={t("settings.browsePlaceholderGemini")}
@@ -131,6 +137,7 @@ export function DirectorySettings({
         <DirectoryInput
           label={t("settings.grokConfigDir")}
           description={undefined}
+          wslSubdir=".grok"
           value={grokDir}
           resolvedValue={resolvedDirs.grokbuild}
           placeholder={t("settings.browsePlaceholderGrok")}
@@ -142,6 +149,7 @@ export function DirectorySettings({
         <DirectoryInput
           label={t("settings.opencodeConfigDir")}
           description={undefined}
+          wslSubdir=".config"
           value={opencodeDir}
           resolvedValue={resolvedDirs.opencode}
           placeholder={t("settings.browsePlaceholderOpencode")}
@@ -153,6 +161,7 @@ export function DirectorySettings({
         <DirectoryInput
           label={t("settings.openclawConfigDir")}
           description={undefined}
+          wslSubdir=".openclaw"
           value={openclawDir}
           resolvedValue={resolvedDirs.openclaw}
           placeholder={t("settings.browsePlaceholderOpenclaw")}
@@ -164,6 +173,7 @@ export function DirectorySettings({
         <DirectoryInput
           label={t("settings.hermesConfigDir")}
           description={undefined}
+          wslSubdir=".hermes"
           value={hermesDir}
           resolvedValue={resolvedDirs.hermes}
           placeholder={t("settings.browsePlaceholderHermes")}
@@ -182,6 +192,7 @@ interface DirectoryInputProps {
   value?: string;
   resolvedValue: string;
   placeholder?: string;
+  wslSubdir?: string;
   onChange: (value?: string) => void;
   onBrowse: () => Promise<void>;
   onReset: () => Promise<void>;
@@ -193,15 +204,41 @@ function DirectoryInput({
   value,
   resolvedValue,
   placeholder,
+  wslSubdir,
   onChange,
   onBrowse,
   onReset,
 }: DirectoryInputProps) {
   const { t } = useTranslation();
+  const [wslLoading, setWslLoading] = useState(false);
   const displayValue = useMemo(
     () => value ?? resolvedValue ?? "",
     [value, resolvedValue],
   );
+
+  const fillWslDir = async () => {
+    if (wslLoading) return;
+    setWslLoading(true);
+    try {
+      const distros = await settingsApi.listWslDistros();
+      if (distros.length === 0) {
+        toast.info(t("settings.wsl.noDistros"));
+        return;
+      }
+      const distro = distros[0];
+      const user = await settingsApi.wslDefaultUser(distro);
+      const home = user ? `\\home\\${user}` : "";
+      const sub = wslSubdir ? `\\${wslSubdir.replace(/^\\+/, "")}` : "";
+      onChange(`\\\\wsl$\\${distro}${home}${sub}`);
+      if (distros.length > 1) {
+        toast.info(
+          t("settings.wsl.multipleDistros", { distros: distros.join(", ") }),
+        );
+      }
+    } finally {
+      setWslLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-1.5">
@@ -218,6 +255,18 @@ function DirectoryInput({
           className="text-xs"
           onChange={(event) => onChange(event.target.value)}
         />
+        {isWindows() ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={fillWslDir}
+            disabled={wslLoading}
+            title={t("settings.wsl.fillButton")}
+          >
+            <span className="text-[10px] font-semibold">WSL</span>
+          </Button>
+        ) : null}
         <Button
           type="button"
           variant="outline"

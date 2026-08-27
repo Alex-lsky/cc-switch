@@ -233,6 +233,22 @@ export const settingsApi = {
     return await invoke("get_auto_launch_status");
   },
 
+  async listWslDistros(): Promise<string[]> {
+    try {
+      return await invoke<string[]>("list_wsl_distros");
+    } catch {
+      return [];
+    }
+  },
+
+  async wslDefaultUser(distro: string): Promise<string> {
+    try {
+      return await invoke<string>("wsl_default_user", { distro });
+    } catch {
+      return "";
+    }
+  },
+
   async getToolVersions(
     tools?: string[],
     wslShellByTool?: Record<

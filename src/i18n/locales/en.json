@@ -273,7 +273,8 @@
     "windowControlFailed": "Window control failed: {{error}}",
     "officialBlockedByProxy": "Cannot switch to official provider while local routing is active. Using routing with official APIs may cause account bans.",
     "proxyOfficialWarning": "Current provider {{name}} is official. Consider switching to a third-party provider before using local routing.",
-    "proxyReasonClaudeDesktop": "Using Claude Desktop local routing mode"
+    "proxyReasonClaudeDesktop": "Using Claude Desktop local routing mode",
+    "terminalRestartRequired": "Switched successfully. Restart your terminal to apply changes."
   },
   "confirm": {
     "deleteProvider": "Delete Provider",
@@ -875,7 +876,12 @@
       "defaultCostMultiplierRequired": "Default multiplier is required",
       "defaultCostMultiplierInvalid": "Invalid multiplier format"
     },
-    "saveFailedGeneric": "Save failed, please try again"
+    "saveFailedGeneric": "Save failed, please try again",
+    "wsl": {
+      "noDistros": "No WSL distro detected",
+      "multipleDistros": "Multiple distros found, using the first: {{distros}}",
+      "fillButton": "Use WSL directory"
+    }
   },
   "apps": {
     "claude": "Claude",

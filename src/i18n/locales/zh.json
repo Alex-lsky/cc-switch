@@ -273,7 +273,8 @@
     "windowControlFailed": "窗口控制失败：{{error}}",
     "officialBlockedByProxy": "本地路由模式下不能切换到官方供应商，使用路由访问官方 API 可能导致账号被封禁",
     "proxyOfficialWarning": "当前供应商 {{name}} 是官方供应商，建议切换到第三方供应商后再使用本地路由",
-    "proxyReasonClaudeDesktop": "使用 Claude Desktop 本地路由模式"
+    "proxyReasonClaudeDesktop": "使用 Claude Desktop 本地路由模式",
+    "terminalRestartRequired": "切换成功，请重启终端以生效"
   },
   "confirm": {
     "deleteProvider": "删除供应商",
@@ -875,7 +876,12 @@
       "defaultCostMultiplierRequired": "默认倍率不能为空",
       "defaultCostMultiplierInvalid": "默认倍率格式不正确"
     },
-    "saveFailedGeneric": "保存失败，请重试"
+    "saveFailedGeneric": "保存失败，请重试",
+    "wsl": {
+      "noDistros": "未检测到 WSL 发行版",
+      "multipleDistros": "检测到多个发行版，已使用第一个：{{distros}}",
+      "fillButton": "使用 WSL 目录"
+    }
   },
   "apps": {
     "claude": "Claude",

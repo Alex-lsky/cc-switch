@@ -273,7 +273,8 @@
     "windowControlFailed": "視窗控制失敗：{{error}}",
     "officialBlockedByProxy": "本地路由模式下不能切換至官方供應商，使用路由存取官方 API 可能導致帳號被封鎖",
     "proxyOfficialWarning": "目前供應商 {{name}} 是官方供應商，建議切換至第三方供應商後再使用本地路由",
-    "proxyReasonClaudeDesktop": "使用 Claude Desktop 本機路由模式"
+    "proxyReasonClaudeDesktop": "使用 Claude Desktop 本機路由模式",
+    "terminalRestartRequired": "切換成功，請重新啟動終端以套用"
   },
   "confirm": {
     "deleteProvider": "刪除供應商",
@@ -876,7 +877,12 @@
       "defaultCostMultiplierRequired": "預設倍率不能為空",
       "defaultCostMultiplierInvalid": "預設倍率格式不正確"
     },
-    "saveFailedGeneric": "儲存失敗，請重試"
+    "saveFailedGeneric": "儲存失敗，請重試",
+    "wsl": {
+      "noDistros": "未偵測到 WSL 發行版",
+      "multipleDistros": "偵測到多個發行版，已使用第一個：{{distros}}",
+      "fillButton": "使用 WSL 目錄"
+    }
   },
   "apps": {
     "claude": "Claude",
