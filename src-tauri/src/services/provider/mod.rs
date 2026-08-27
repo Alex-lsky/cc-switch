@@ -38,8 +38,9 @@ pub(crate) use live::{
 
 // Internal re-exports
 use live::{
-    remove_hermes_provider_from_live, remove_openclaw_provider_from_live,
-    remove_opencode_provider_from_live, write_gemini_live,
+    apply_live_user_delta, remove_hermes_provider_from_live,
+    remove_openclaw_provider_from_live, remove_opencode_provider_from_live,
+    write_gemini_live,
 };
 use usage::validate_usage_script;
 
@@ -3061,9 +3062,10 @@ impl ProviderService {
         id: &str,
         providers: &indexmap::IndexMap<String, Provider>,
     ) -> Result<SwitchResult, AppError> {
-        let provider = providers
+        let mut provider = providers
             .get(id)
-            .ok_or_else(|| AppError::Message(format!("供应商 {id} 不存在")))?;
+            .ok_or_else(|| AppError::Message(format!("供应商 {id} 不存在")))?
+            .clone();
 
         // OMO ↔ OMO Slim are mutually exclusive; activating one removes the other's config file.
         if matches!(app_type, AppType::OpenCode) {
@@ -3099,6 +3101,25 @@ impl ProviderService {
                     // Only backfill when switching to a different provider
                     if let Ok(live_config) = read_live_settings(app_type.clone()) {
                         if let Some(mut current_provider) = providers.get(&current_id).cloned() {
+                            // 差集回补(配置主权,#370):live 上用户自有、旧快照
+                            // 缺失的键(permissions/插件状态/注释/[projects] 等)
+                            // 合并进新供应商快照,切换后继续存活。必须在下面的
+                            // 回填改写旧快照之前计算,否则差集恒为空。
+                            if apply_live_user_delta(
+                                &app_type,
+                                &live_config,
+                                &current_provider.settings_config,
+                                &mut provider,
+                            ) {
+                                if let Err(e) =
+                                    state.db.save_provider(app_type.as_str(), &provider)
+                                {
+                                    log::warn!(
+                                        "Failed to persist user-key rescue for provider '{id}': {e}"
+                                    );
+                                }
+                            }
+
                             // 切走前先把 live 里的可共享改动（含用户直接在应用内
                             // 装插件/加 hook/改偏好）同步进通用配置片段，再做剥离回填。
                             // 详见 sync_common_config_snippet_from_live 的文档。
@@ -3143,7 +3164,7 @@ impl ProviderService {
         }
 
         // Sync to live (write_gemini_live handles security flag internally for Gemini)
-        write_live_with_common_config(state.db.as_ref(), &app_type, provider)?;
+        write_live_with_common_config(state.db.as_ref(), &app_type, &provider)?;
 
         // A material-less official Codex provider gets a config-only live
         // write, which can leave the previous third-party key in
@@ -3194,7 +3215,7 @@ impl ProviderService {
         //
         // If persisting the marker fails, roll back the just-written live config so we don't leave
         // the provider in a silent inconsistent state (present in live, but still marked DB-only).
-        if app_type.is_additive_mode() && Self::provider_live_config_managed(provider) != Some(true)
+        if app_type.is_additive_mode() && Self::provider_live_config_managed(&provider) != Some(true)
         {
             let mut updated = provider.clone();
             Self::set_provider_live_config_managed(&mut updated, true);
@@ -3257,7 +3278,7 @@ impl ProviderService {
             };
 
         let providers = state.db.get_all_providers(app_type.as_str())?;
-        let Some(provider) = providers.get(&current_id) else {
+        let Some(mut provider) = providers.get(&current_id).cloned() else {
             return Ok(());
         };
 
@@ -3275,17 +3296,51 @@ impl ProviderService {
         // here, not just proxy_config.enabled.
         if has_live_backup || live_taken_over {
             if matches!(app_type, AppType::ClaudeDesktop) {
-                write_live_with_common_config(state.db.as_ref(), &app_type, provider)?;
+                write_live_with_common_config(state.db.as_ref(), &app_type, &provider)?;
                 return Ok(());
             }
 
             futures::executor::block_on(
                 state
                     .proxy_service
-                    .update_live_backup_from_provider(app_type.as_str(), provider),
+                    .update_live_backup_from_provider(app_type.as_str(), &provider),
             )
             .map_err(|e| AppError::Message(format!("更新 Live 备份失败: {e}")))?;
             return Ok(());
+        }
+
+        // 配置主权(#5891):非切换的 live 重写(共享片段修改、MCP 变更等触发
+        // 的重投影)之前,先把 live 上的用户改动回填进当前供应商快照,避免用
+        // 过期快照覆写掉用户在应用关闭期间或两次写入之间的手改内容。
+        // 必须放在接管分支之后:接管期间 live 是代理占位配置,回填会把占位
+        // 内容误当用户改动(还会连带触发共享片段的键自动删除)。
+        if !app_type.is_additive_mode() {
+            match read_live_settings(app_type.clone()) {
+                Ok(live_config) => {
+                    Self::sync_common_config_snippet_from_live(
+                        state,
+                        &app_type,
+                        &provider,
+                        &live_config,
+                        &mut SwitchResult::default(),
+                    );
+                    let stripped = strip_common_config_from_live_settings(
+                        state.db.as_ref(),
+                        &app_type,
+                        &provider,
+                        live_config,
+                    );
+                    if stripped != provider.settings_config {
+                        provider.settings_config = stripped;
+                        if let Err(e) = state.db.save_provider(app_type.as_str(), &provider) {
+                            log::warn!("sync backfill failed for provider '{current_id}': {e}");
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::warn!("sync backfill: read live for {app_type:?} failed: {e}");
+                }
+            }
         }
 
         sync_current_provider_for_app_to_live(state, &app_type)
