@@ -1016,4 +1016,66 @@ requires_openai_auth = true`,
     icon: "openrouter",
     iconColor: "#6566F1",
   },
+  {
+    name: "Me-zai",
+    websiteUrl: "https://api.mezai.uk",
+    auth: generateThirdPartyAuth(""),
+    config: generateThirdPartyConfig(
+      "Me-zai",
+      "https://api.mezai.uk/v1",
+      "gpt-5.5",
+    ),
+    endpointCandidates: ["https://api.mezai.uk/v1"],
+    // Me-zai 上游为 new-api 统一中转：原生 /v1/responses 直通（ChatGPT/Codex
+    // 协议），模型目录与生产环境一致；gpt-5.5/5.6 系列按 ChatGPT 后端能力
+    // 声明 xhigh，1M 上下文模型按中转实际配置。
+    apiFormat: "openai_responses",
+    modelCatalog: modelCatalog([
+      { model: "gpt-5.5", displayName: "GPT-5.5", contextWindow: 272000 },
+      {
+        model: "gpt-5.6-luna",
+        displayName: "GPT-5.6 Luna",
+        contextWindow: 272000,
+      },
+      {
+        model: "gpt-5.6-sol",
+        displayName: "GPT-5.6 Sol",
+        contextWindow: 272000,
+      },
+      {
+        model: "gpt-5.6-terra",
+        displayName: "GPT-5.6 Terra",
+        contextWindow: 272000,
+      },
+      { model: "grok-4.5", displayName: "Grok 4.5", contextWindow: 400000 },
+      {
+        model: "deepseek-v4-flash",
+        displayName: "DeepSeek V4 Flash",
+        contextWindow: 1000000,
+      },
+      { model: "kimi-k3", displayName: "Kimi K3", contextWindow: 1000000 },
+      {
+        model: "Gemini 3.7 Flash",
+        displayName: "Gemini 3.7 Flash",
+        contextWindow: 1000000,
+      },
+      { model: "glm-5.3", displayName: "GLM-5.3", contextWindow: 1000000 },
+      {
+        model: "muse-spark-1.2-contributor",
+        displayName: "Muse Spark 1.2 Contributor",
+        contextWindow: 1000000,
+      },
+      {
+        model: "claude-opus-4-6",
+        displayName: "Claude Opus 4.6",
+        contextWindow: 1000000,
+      },
+      {
+        model: "glm-5.3-flash",
+        displayName: "GLM-5.3 Flash",
+        contextWindow: 1000000,
+      },
+    ]),
+    category: "third_party",
+  },
 ];
