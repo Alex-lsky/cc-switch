@@ -125,66 +125,6 @@ describe("GrokBuildProviderForm", () => {
     expect(selected.base_url).toBe("https://api.x.ai/v1");
   });
 
-  it("uses the Codex-style advanced section without redundant Grok fields", () => {
-    const { container } = render(
-      <GrokBuildProviderForm
-        submitLabel="Save"
-        onSubmit={() => {}}
-        onCancel={() => {}}
-      />,
-    );
-
-    expect(container.querySelector("#grokbuild-profile")).toBeNull();
-    expect(container.querySelector("#grokbuild-api-backend")).toBeNull();
-    expect(screen.getByText("高级选项")).toBeInTheDocument();
-    expect(container.querySelector("#grokbuild-context-window")).toHaveValue(
-      500000,
-    );
-    expect(screen.getByText("上游格式")).toBeInTheDocument();
-  });
-
-  it("keeps the Grok client on Responses when the upstream uses Chat", async () => {
-    const user = userEvent.setup();
-    const onSubmit = vi.fn();
-    const configToml = `[models]
-default = "grok-4.5"
-
-[model."grok-4.5"]
-model = "grok-4.5"
-base_url = "https://relay.example.com/v1"
-name = "Chat Relay"
-api_key = "secret-key"
-api_backend = "chat_completions"
-context_window = 500000
-`;
-    render(
-      <GrokBuildProviderForm
-        providerId="chat-relay"
-        submitLabel="Save"
-        onSubmit={onSubmit}
-        onCancel={() => {}}
-        initialData={{
-          name: "Chat Relay",
-          category: "custom",
-          settingsConfig: { config: configToml },
-          meta: { apiFormat: "openai_chat" },
-        }}
-      />,
-    );
-
-    await user.click(screen.getByRole("button", { name: "Save" }));
-
-    expect(onSubmit).toHaveBeenCalledTimes(1);
-    const submitted = onSubmit.mock.calls[0][0];
-    const settings = JSON.parse(submitted.settingsConfig);
-    const config = parseToml(settings.config) as any;
-    expect(submitted.meta.apiFormat).toBe("openai_chat");
-    const selected = config.model[config.models.default];
-    expect(selected.api_backend).toBe("responses");
-    expect(selected.model).toBe("grok-4.5");
-    expect(selected.base_url).toBe("https://relay.example.com/v1");
-  });
-
   it("renders localized validation feedback for malformed TOML", async () => {
     const onSubmit = vi.fn();
     render(

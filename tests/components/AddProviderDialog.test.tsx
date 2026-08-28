@@ -164,9 +164,10 @@ describe("AddProviderDialog", () => {
 
   it("submits the optional managed account from the Codex Official preset", async () => {
     const handleSubmit = vi.fn().mockResolvedValue(undefined);
+    // 合并去商业化后 codex 预设的 official 条目不再携带 providerType 标记；
+    // managed-account 元数据由提交 payload 自带，这里取第一个 official 预设。
     const officialPresetIndex = codexProviderPresets.findIndex(
-      (preset) =>
-        preset.category === "official" && preset.providerType === "codex_oauth",
+      (preset) => preset.category === "official",
     );
     expect(officialPresetIndex).toBeGreaterThanOrEqual(0);
 
