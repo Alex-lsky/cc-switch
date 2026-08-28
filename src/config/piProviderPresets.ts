@@ -24,6 +24,8 @@ export type PiPresetModel = PiCatalogModel & {
 };
 
 export interface PiProviderPreset {
+  /** 置顶预设：在预设网格中始终排在最前（本地内置渠道用） */
+  pinned?: boolean;
   name: string;
   nameKey?: string;
   providerKey: string;
