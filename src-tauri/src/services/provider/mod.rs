@@ -5135,7 +5135,7 @@ impl ProviderService {
             }
         }
 
-        let target_managed_codex_account_id = Self::managed_codex_oauth_account_id(provider);
+        let target_managed_codex_account_id = Self::managed_codex_oauth_account_id(&provider);
         let outgoing_managed_codex_account_id = current_managed_codex_account_id
             .as_ref()
             .filter(|account_id| target_managed_codex_account_id.as_ref() != Some(*account_id))
@@ -5146,7 +5146,7 @@ impl ProviderService {
         )?;
 
         // 提交 current 前预检托管 Codex token（见 preflight_managed_codex_live）。
-        let preflighted_provider = Self::preflight_managed_codex_live(state, &app_type, provider)?;
+        let preflighted_provider = Self::preflight_managed_codex_live(state, &app_type, &provider)?;
         let use_managed_codex_transaction = matches!(app_type, AppType::Codex)
             && (current_managed_codex_account_id.is_some()
                 || target_managed_codex_account_id.is_some());
@@ -5165,7 +5165,7 @@ impl ProviderService {
                 Self::write_preflighted_or_current_live(
                     state,
                     &app_type,
-                    provider,
+                    &provider,
                     preflighted_provider.as_ref(),
                 )?;
                 Self::clear_outgoing_managed_codex_live_auth(
@@ -5211,7 +5211,7 @@ impl ProviderService {
             Self::write_preflighted_or_current_live(
                 state,
                 &app_type,
-                provider,
+                &provider,
                 preflighted_provider.as_ref(),
             )?;
         }
@@ -5226,7 +5226,7 @@ impl ProviderService {
         if matches!(app_type, AppType::Codex)
             && backfill_completed
             && (provider.category.as_deref() == Some("official")
-                || crate::proxy::providers::is_codex_official_provider(provider))
+                || crate::proxy::providers::is_codex_official_provider(&provider))
             && target_managed_codex_account_id.is_none()
         {
             let db_auth = provider.settings_config.get("auth");
