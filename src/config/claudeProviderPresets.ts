@@ -23,6 +23,8 @@ export interface PresetTheme {
 }
 
 export interface ProviderPreset {
+  /** 置顶预设：在预设网格中始终排在最前（本地内置渠道用） */
+  pinned?: boolean;
   name: string;
   nameKey?: string; // i18n key for localized display name
   websiteUrl: string;
@@ -819,5 +821,8 @@ export const providerPresets: ProviderPreset[] = [
       },
     },
     category: "third_party",
+    pinned: true,
+    icon: "mezai",
+    iconColor: "#6366F1",
   },
 ];

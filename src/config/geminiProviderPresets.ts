@@ -13,6 +13,8 @@ export interface GeminiPresetTheme {
 }
 
 export interface GeminiProviderPreset {
+  /** 置顶预设：在预设网格中始终排在最前（本地内置渠道用） */
+  pinned?: boolean;
   name: string;
   nameKey?: string; // i18n key for localized display name
   websiteUrl: string;
@@ -102,6 +104,23 @@ export const geminiProviderPresets: GeminiProviderPreset[] = [
     model: "gemini-3.6-flash",
     description: "自定义 Gemini API 端点",
     category: "custom",
+  },
+  {
+    name: "Me-zai",
+    websiteUrl: "https://api.mezai.uk",
+    settingsConfig: {
+      env: {
+        GOOGLE_GEMINI_BASE_URL: "https://api.mezai.uk",
+        GEMINI_MODEL: "gemini-3.6-flash-high",
+      },
+    },
+    baseURL: "https://api.mezai.uk",
+    model: "gemini-3.6-flash-high",
+    description: "Me-zai 统一中转（Gemini 兼容协议）",
+    category: "third_party",
+    pinned: true,
+    icon: "mezai",
+    iconColor: "#6366F1",
   },
 ];
 

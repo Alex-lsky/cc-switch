@@ -2,6 +2,8 @@ import type { ProviderCategory, OpenCodeProviderConfig } from "../types";
 import type { PresetTheme, TemplateValueConfig } from "./claudeProviderPresets";
 
 export interface OpenCodeProviderPreset {
+  /** 置顶预设：在预设网格中始终排在最前（本地内置渠道用） */
+  pinned?: boolean;
   name: string;
   nameKey?: string; // i18n key for localized display name
   websiteUrl: string;
@@ -1146,5 +1148,29 @@ export const opencodeProviderPresets: OpenCodeProviderPreset[] = [
     icon: "opencode",
     iconColor: "#6366F1",
     isCustomTemplate: true,
+  },
+  {
+    name: "Me-zai",
+    websiteUrl: "https://api.mezai.uk",
+    settingsConfig: {
+      npm: "@ai-sdk/openai-compatible",
+      name: "Me-zai",
+      options: {
+        baseURL: "https://api.mezai.uk/v1",
+        apiKey: "",
+      },
+      models: {
+        "gpt-5.5": { name: "GPT-5.5" },
+        "deepseek-v4-pro": { name: "DeepSeek V4 Pro" },
+        "deepseek-v4-flash": { name: "DeepSeek V4 Flash" },
+        "kimi-k3": { name: "Kimi K3" },
+        "glm-5.3": { name: "GLM-5.3" },
+        "grok-4.5": { name: "Grok 4.5" },
+      },
+    },
+    category: "third_party",
+    pinned: true,
+    icon: "mezai",
+    iconColor: "#6366F1",
   },
 ];

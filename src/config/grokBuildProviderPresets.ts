@@ -24,6 +24,8 @@ import type { CodexApiFormat } from "../types";
 import { GROK_BUILD_DEFAULT_MODEL } from "../utils/grokBuildConfig";
 
 export interface GrokBuildProviderPreset {
+  /** 置顶预设：在预设网格中始终排在最前（本地内置渠道用） */
+  pinned?: boolean;
   name: string;
   nameKey?: string; // i18n key for localized display name
   websiteUrl: string;
@@ -148,5 +150,17 @@ export const grokBuildProviderPresets: GrokBuildProviderPreset[] = [
     category: "aggregator",
     icon: "openrouter",
     iconColor: "#6566F1",
+  },
+  {
+    name: "Me-zai",
+    websiteUrl: "https://api.mezai.uk",
+    auth: grokAuth(),
+    config: grokPresetConfig("Me-zai", "https://api.mezai.uk/v1", "grok-4.5"),
+    endpointCandidates: ["https://api.mezai.uk/v1"],
+    apiFormat: "openai_responses",
+    category: "third_party",
+    pinned: true,
+    icon: "mezai",
+    iconColor: "#6366F1",
   },
 ];

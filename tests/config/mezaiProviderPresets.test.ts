@@ -1,6 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { codexProviderPresets } from "@/config/codexProviderPresets";
 import { providerPresets } from "@/config/claudeProviderPresets";
+import { claudeDesktopProviderPresets } from "@/config/claudeDesktopProviderPresets";
+import { geminiProviderPresets } from "@/config/geminiProviderPresets";
+import { grokBuildProviderPresets } from "@/config/grokBuildProviderPresets";
+import { hermesProviderPresets } from "@/config/hermesProviderPresets";
+import { openclawProviderPresets } from "@/config/openclawProviderPresets";
+import { opencodeProviderPresets } from "@/config/opencodeProviderPresets";
+import { icons } from "@/icons/extracted";
+import { sortPresetEntries } from "@/components/providers/forms/ProviderPresetSelector";
+import { PresetSortMode } from "@/components/providers/forms/ProviderPresetSelector";
+
+const PRESET_SETS = [
+  ["claude", providerPresets],
+  ["claudeDesktop", claudeDesktopProviderPresets],
+  ["codex", codexProviderPresets],
+  ["gemini", geminiProviderPresets],
+  ["grokBuild", grokBuildProviderPresets],
+  ["hermes", hermesProviderPresets],
+  ["openclaw", openclawProviderPresets],
+  ["opencode", opencodeProviderPresets],
+] as const;
 
 describe("Me-zai built-in presets", () => {
   it("registers a Codex preset with native Responses passthrough", () => {
@@ -25,15 +45,51 @@ describe("Me-zai built-in presets", () => {
     expect(env.ANTHROPIC_AUTH_TOKEN).toBe("");
   });
 
+  it("is present in every app's preset list", () => {
+    for (const [app, presets] of PRESET_SETS) {
+      const count = presets.filter((p) => p.name === "Me-zai").length;
+      expect(count, `${app} 应恰好注册一个 Me-zai 预设`).toBe(1);
+    }
+  });
+
   it("carries no commercial markers (neutral built-in channel)", () => {
-    for (const preset of [
-      ...codexProviderPresets.filter((p) => p.name === "Me-zai"),
-      ...providerPresets.filter((p) => p.name === "Me-zai"),
-    ]) {
-      expect(preset.isPartner).toBeFalsy();
-      expect(preset.primePartner).toBeFalsy();
-      expect(preset.partnerPromotionKey).toBeUndefined();
-      expect(preset.websiteUrl ?? "").not.toContain("aff=");
+    for (const [, presets] of PRESET_SETS) {
+      for (const preset of presets.filter((p) => p.name === "Me-zai")) {
+        const anyPreset = preset as unknown as Record<string, unknown>;
+        expect(anyPreset.isPartner).toBeFalsy();
+        expect(anyPreset.primePartner).toBeFalsy();
+        expect(anyPreset.partnerPromotionKey).toBeUndefined();
+        expect(String(anyPreset.websiteUrl ?? "")).not.toContain("aff=");
+      }
+    }
+  });
+
+  it("pins Me-zai first in every app's preset grid (both sort modes)", () => {
+    for (const [app, presets] of PRESET_SETS) {
+      const entries = presets.map((preset, index) => ({
+        id: `${app}-${index}`,
+        preset,
+      }));
+      const t = (key: string) => key;
+      for (const sortMode of [
+        PresetSortMode.Original,
+        PresetSortMode.NameAsc,
+      ]) {
+        const sorted = sortPresetEntries(entries, sortMode, t);
+        expect(sorted[0]?.preset.name, `${app} ${sortMode} 置顶`).toBe(
+          "Me-zai",
+        );
+      }
+    }
+  });
+
+  it("ships the mezai icon", () => {
+    expect(icons.mezai).toBeDefined();
+    expect(icons.mezai).toContain("<svg");
+    for (const [, presets] of PRESET_SETS) {
+      const preset = presets.find((p) => p.name === "Me-zai");
+      expect(preset?.pinned).toBe(true);
+      expect((preset as { icon?: string })?.icon).toBe("mezai");
     }
   });
 });

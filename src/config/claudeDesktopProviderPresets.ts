@@ -41,6 +41,8 @@ export const CLAUDE_DESKTOP_ROLE_ROUTE_IDS = {
 export type ClaudeDesktopRoleId = keyof typeof CLAUDE_DESKTOP_ROLE_ROUTE_IDS;
 
 export interface ClaudeDesktopProviderPreset {
+  /** 置顶预设：在预设网格中始终排在最前（本地内置渠道用） */
+  pinned?: boolean;
   name: string;
   nameKey?: string;
   websiteUrl: string;
@@ -644,5 +646,17 @@ export const claudeDesktopProviderPresets: ClaudeDesktopProviderPreset[] = [
     ),
     icon: "xiaomimimo",
     iconColor: "#000000",
+  },
+  {
+    name: "Me-zai",
+    websiteUrl: "https://api.mezai.uk",
+    category: "third_party",
+    pinned: true,
+    baseUrl: "https://api.mezai.uk",
+    mode: "proxy",
+    apiFormat: "anthropic",
+    modelRoutes: brandedRoutes("gpt-5.5", "gpt-5.5", "gpt-5.5"),
+    icon: "mezai",
+    iconColor: "#6366F1",
   },
 ];
