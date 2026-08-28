@@ -18,6 +18,73 @@ use std::os::windows::process::CommandExt;
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
+/// 列出已安装的 WSL 发行版(`wsl.exe -l -q`,静默失败返回空列表)。
+/// 用于设置页把配置目录一键指向 WSL 内路径(`\\wsl$\<distro>\...`)。
+#[tauri::command]
+pub async fn list_wsl_distros() -> Vec<String> {
+    tokio::task::spawn_blocking(list_wsl_distros_impl)
+        .await
+        .unwrap_or_default()
+}
+
+#[cfg(target_os = "windows")]
+fn list_wsl_distros_impl() -> Vec<String> {
+    let Ok(output) = std::process::Command::new("wsl.exe")
+        .args(["-l", "-q"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+    else {
+        return Vec::new();
+    };
+    if !output.status.success() {
+        return Vec::new();
+    }
+    decode_command_output(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .filter(|line| !line.contains("没有适用实例") && !line.to_lowercase().contains("no installed"))
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn list_wsl_distros_impl() -> Vec<String> {
+    Vec::new()
+}
+
+/// 获取 WSL 发行版的默认用户名(`wsl.exe -d <distro> -- whoami`)。
+/// 失败返回空字符串;仅用于生成 `\\wsl$\<distro>\home\<user>` 建议路径。
+#[tauri::command]
+pub async fn wsl_default_user(distro: String) -> String {
+    tokio::task::spawn_blocking(move || wsl_default_user_impl(&distro))
+        .await
+        .unwrap_or_default()
+}
+
+#[cfg(target_os = "windows")]
+fn wsl_default_user_impl(distro: &str) -> String {
+    if !is_valid_wsl_distro_name(distro) {
+        return String::new();
+    }
+    let Ok(output) = std::process::Command::new("wsl.exe")
+        .args(["-d", distro, "--", "/bin/sh", "-c", "whoami"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+    else {
+        return String::new();
+    };
+    if !output.status.success() {
+        return String::new();
+    }
+    decode_command_output(&output.stdout).trim().to_string()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn wsl_default_user_impl(_distro: &str) -> String {
+    String::new()
+}
+
 /// 打开外部链接
 #[tauri::command]
 pub async fn open_external(app: AppHandle, url: String) -> Result<bool, String> {
@@ -3658,7 +3725,8 @@ fn wsl_distro_for_tool(tool: &str) -> Option<String> {
 }
 
 /// 从 UNC 路径中提取 WSL 发行版名称
-/// 支持 `\\wsl$\Ubuntu\...` 和 `\\wsl.localhost\Ubuntu\...` 两种格式
+/// 支持 `\\wsl$\Ubuntu\...` 和 `\\wsl.localhost\Ubuntu\...` 两种格式;
+/// 映射盘符(如 `Z:\...`)先经 QueryDosDeviceW 反解再解析
 #[cfg(target_os = "windows")]
 fn wsl_distro_from_path(path: &Path) -> Option<String> {
     use std::path::{Component, Prefix};
@@ -3677,6 +3745,12 @@ fn wsl_distro_from_path(path: &Path) -> Option<String> {
                 }
             }
             None
+        }
+        Prefix::Disk(letter) | Prefix::VerbatimDisk(letter) => {
+            let drive = format!("{}:", letter as char);
+            let unc = resolve_drive_to_unc(&drive)?;
+            // 反解产物必为 UNC,递归一次即得 distro(不会再次走盘符分支)
+            wsl_distro_from_path(&unc)
         }
         _ => None,
     }
@@ -6953,5 +7027,79 @@ mod tests {
             command,
             "pushd \"\\\\server\\share\\100%%^&^(test^)\" || exit /b 1\r\n"
         );
+    }
+}
+
+/// 把 Dos 设备目标串还原为 UNC 路径(跨平台纯字符串逻辑,便于单测)。
+/// 输入形如 `\Device\LanmanRedirector\;Z:00000000003f3aa1\wsl$\Ubuntu\home\user`,
+/// 输出 `\\wsl$\Ubuntu\home\user`;非重定向器目标返回 None。
+pub(crate) fn dos_device_target_to_unc(target: &str) -> Option<PathBuf> {
+    let idx = target.find("Redirector")?;
+    let rest = target[idx + "Redirector".len()..].strip_prefix('\\')?;
+    // rest = ";Z:<token>\<target path>"
+    let rest = rest.split_once(':')?.1;
+    // 跳过凭据/会话 token,取第一个反斜杠之后的部分
+    let rest = rest.splitn(2, '\\').nth(1)?;
+    if rest.is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(format!(r"\\{rest}")))
+}
+
+/// 把磁盘符路径(如 `Z:\home\user`)反解为 UNC 路径。
+/// 用于识别「映射盘符指向 WSL」的场景(仅 Windows;其他平台恒 None)。
+#[cfg(target_os = "windows")]
+pub(crate) fn resolve_drive_to_unc(drive: &str) -> Option<PathBuf> {
+    use windows_sys::Win32::Storage::FileSystem::QueryDosDeviceW;
+
+    let drive = drive.trim_end_matches('\\');
+    if drive.len() != 2 || !drive.ends_with(':') {
+        return None;
+    }
+    let wide: Vec<u16> = drive.encode_utf16().chain(std::iter::once(0)).collect();
+    let mut buf = [0u16; 2048];
+    // SAFETY: buf 是有效的输出缓冲区;QueryDosDeviceW 写入不超过 buf.len() 的 UTF-16
+    let len = unsafe { QueryDosDeviceW(wide.as_ptr(), buf.as_mut_ptr(), buf.len() as u32) };
+    if len == 0 {
+        return None;
+    }
+    let end = buf.iter().position(|&c| c == 0).unwrap_or(len as usize);
+    let target = String::from_utf16_lossy(&buf[..end]);
+    dos_device_target_to_unc(&target)
+}
+
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn resolve_drive_to_unc(_drive: &str) -> Option<PathBuf> {
+    None
+}
+
+#[cfg(test)]
+mod drive_unc_tests {
+    use super::*;
+
+    #[test]
+    fn lanman_redirector_target_resolves_to_unc() {
+        let target = r"\Device\LanmanRedirector\;Z:00000000003f3aa1\wsl$\Ubuntu\home\user";
+        let unc = dos_device_target_to_unc(target).expect("should resolve");
+        assert_eq!(unc, PathBuf::from(r"\\wsl$\Ubuntu\home\user"));
+    }
+
+    #[test]
+    fn verbatim_redirector_with_minimal_token() {
+        let target = r"\Device\LanmanRedirector\;Y:8\wsl.localhost\Debian-12\root";
+        let unc = dos_device_target_to_unc(target).expect("should resolve");
+        assert_eq!(unc, PathBuf::from(r"\\wsl.localhost\Debian-12\root"));
+    }
+
+    #[test]
+    fn non_redirector_target_is_rejected() {
+        assert!(dos_device_target_to_unc(r"\Device\HarddiskVolume3").is_none());
+        assert!(dos_device_target_to_unc("").is_none());
+    }
+
+    #[test]
+    fn non_windows_resolve_drive_is_none() {
+        #[cfg(not(target_os = "windows"))]
+        assert!(resolve_drive_to_unc("Z:").is_none());
     }
 }

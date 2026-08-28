@@ -241,6 +241,148 @@ fn json_remove_array_items(target_arr: &mut Vec<Value>, source_arr: &[Value]) {
     }
 }
 
+// ============================================================================
+// 配置主权:差集回补(live 用户键跨供应商保留)
+// ============================================================================
+// 上游 #370 / #5891:用户在 live 配置上手改的、与供应商无关的键
+// (permissions、statusLine、插件状态、[projects] 信任、注释等)在切换和
+// 非切换重写时被整文件覆写丢失。写入前计算 live 相对旧快照的「新增键
+// 差集」,经管辖键清单过滤后合并进新快照——cc-switch 管辖的键仍由
+// 供应商快照全权决定,用户自有键跨供应商存活。
+
+/// cc-switch 管辖键:这些键完全由供应商快照(及其注入流程)决定,
+/// 差集回补不携带;其余键视为用户自有,跨供应商保留。
+pub(crate) fn is_provider_managed_key(app_type: &AppType, key: &str) -> bool {
+    match app_type {
+        // Claude:cc-switch 只写 env 块;permissions/hooks/statusLine 等归用户
+        AppType::Claude => key == "env",
+        // Codex / Grok Build:路由、模型表与 cc-switch 注入键由快照决定;
+        // [mcp_servers] 由 MCP 投影独立维护;mcp 是 cc-switch 历史遗留格式,
+        // wire_api 是无 model_provider 时的顶层路由 fallback——两者均非用户键
+        AppType::Codex | AppType::GrokBuild => matches!(
+            key,
+            "model_provider"
+                | "model"
+                | "model_providers"
+                | "models"
+                | "mcp_servers"
+                | "mcp"
+                | "wire_api"
+                | "web_search"
+                | "model_catalog_json"
+                | "experimental_bearer_token"
+        ),
+        // 其余应用暂不参与差集回补(Gemini 已有部分合并,additive 应用本就节级合并)
+        _ => true,
+    }
+}
+
+/// Claude(JSON):live 顶层新增、旧快照缺失、非管辖的键 → 差集对象。
+fn claude_live_user_delta(live: &Value, old_snapshot: &Value) -> Value {
+    let mut delta = serde_json::Map::new();
+    let (Some(live_map), Some(old_map)) = (live.as_object(), old_snapshot.as_object()) else {
+        return Value::Object(delta);
+    };
+    for (key, value) in live_map {
+        if old_map.contains_key(key) || is_provider_managed_key(&AppType::Claude, key) {
+            continue;
+        }
+        delta.insert(key.clone(), value.clone());
+    }
+    Value::Object(delta)
+}
+
+/// Codex / Grok Build(TOML):live 顶层新增、旧快照缺失、非管辖的键。
+/// 返回键值对列表(toml_edit Item 携带原文注释),由调用方插入新文档。
+fn toml_live_user_delta(
+    app_type: &AppType,
+    live_text: &str,
+    old_config_text: &str,
+) -> Vec<(String, Item)> {
+    let mut out = Vec::new();
+    let (Ok(live_doc), Ok(old_doc)) = (
+        live_text.parse::<DocumentMut>(),
+        old_config_text.parse::<DocumentMut>(),
+    ) else {
+        log::warn!("[delta-debug] live or old TOML parse failed");
+        return out;
+    };
+    for (key, item) in live_doc.iter() {
+        if old_doc.contains_key(key) || is_provider_managed_key(app_type, key) {
+            continue;
+        }
+        out.push((key.to_string(), item.clone()));
+    }
+    out
+}
+
+/// 差集回补入口:把 live 上的用户自有键合并进即将写出的供应商快照。
+/// `live_config` 是 read_live_settings 的产物;`old_snapshot_settings` 必须是
+/// 回填改写**之前**的旧供应商快照(否则差集恒为空)。
+/// 返回快照是否被修改(调用方据此决定是否落库)。
+pub(crate) fn apply_live_user_delta(
+    app_type: &AppType,
+    live_config: &Value,
+    old_snapshot_settings: &Value,
+    provider: &mut Provider,
+) -> bool {
+    match app_type {
+        AppType::Claude => {
+            let delta = claude_live_user_delta(live_config, old_snapshot_settings);
+            let Some(delta_map) = delta.as_object() else {
+                return false;
+            };
+            if delta_map.is_empty() {
+                return false;
+            }
+            let Some(target) = provider.settings_config.as_object_mut() else {
+                return false;
+            };
+            for (key, value) in delta_map {
+                target.insert(key.clone(), value.clone());
+            }
+            true
+        }
+        AppType::Codex | AppType::GrokBuild => {
+            fn config_of(v: &Value) -> Option<&str> {
+                v.get("config").and_then(Value::as_str)
+            }
+            let (Some(live_text), Some(old_text), Some(new_text)) = (
+                config_of(live_config),
+                config_of(old_snapshot_settings),
+                config_of(&provider.settings_config),
+            ) else {
+                return false;
+            };
+            let delta = toml_live_user_delta(app_type, live_text, old_text);
+            if delta.is_empty() {
+                return false;
+            }
+            let Ok(mut new_doc) = new_text.parse::<DocumentMut>() else {
+                return false;
+            };
+            let mut changed = false;
+            for (key, item) in delta {
+                if new_doc.contains_key(&key) {
+                    continue;
+                }
+                new_doc.insert(&key, item);
+                changed = true;
+            }
+            if changed {
+                if let Some(obj) = provider.settings_config.as_object_mut() {
+                    obj.insert(
+                        "config".to_string(),
+                        Value::String(new_doc.to_string()),
+                    );
+                }
+            }
+            changed
+        }
+        _ => false,
+    }
+}
+
 fn json_deep_merge(target: &mut Value, source: &Value) {
     match (target, source) {
         (Value::Object(target_map), Value::Object(source_map)) => {

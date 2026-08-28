@@ -328,9 +328,15 @@ export function useProviderActions(
               messageKey = "notifications.claudeDesktopRestartRequired";
               defaultMessage = "切换成功，重启 Claude Desktop 后生效";
             }
-          } else if (activeApp === "opencode" || activeApp === "openclaw") {
-            messageKey = "notifications.addToConfigSuccess";
-            defaultMessage = "已添加到配置";
+          } else if (
+            activeApp === "gemini" ||
+            activeApp === "opencode" ||
+            activeApp === "openclaw" ||
+            activeApp === "hermes"
+          ) {
+            // 这些工具在启动时读取配置文件，切换后需重启终端/CLI 才生效
+            messageKey = "notifications.terminalRestartRequired";
+            defaultMessage = "切换成功，请重启终端以生效";
           }
           toast.success(t(messageKey, { defaultValue: defaultMessage }), {
             closeButton: true,

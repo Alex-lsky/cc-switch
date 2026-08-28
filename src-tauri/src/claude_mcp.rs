@@ -67,20 +67,37 @@ fn wrap_command_for_windows(_obj: &mut Map<String, Value>) {
 
 /// 检测路径是否为 WSL 网络路径（如 \\wsl$\Ubuntu\... 或 \\wsl.localhost\Ubuntu\...）
 /// WSL 环境运行的是 Linux，不需要 cmd /c 包装
-/// 注意：仅检测直接 UNC 路径，映射磁盘符（如 Z: -> \\wsl$\...）无法检测
+/// 映射磁盘符（如 Z: -> \\wsl$\...）经 QueryDosDeviceW 反解后同样可识别
 #[cfg(windows)]
 fn is_wsl_path(path: &Path) -> bool {
     use std::path::{Component, Prefix};
-    if let Some(Component::Prefix(prefix)) = path.components().next() {
-        match prefix.kind() {
-            Prefix::UNC(server, _) | Prefix::VerbatimUNC(server, _) => {
-                let s = server.to_string_lossy();
-                s.eq_ignore_ascii_case("wsl$") || s.eq_ignore_ascii_case("wsl.localhost")
-            }
-            _ => false,
+    let Some(Component::Prefix(prefix)) = path.components().next() else {
+        return false;
+    };
+    match prefix.kind() {
+        Prefix::UNC(server, _) | Prefix::VerbatimUNC(server, _) => {
+            let s = server.to_string_lossy();
+            s.eq_ignore_ascii_case("wsl$") || s.eq_ignore_ascii_case("wsl.localhost")
         }
-    } else {
-        false
+        Prefix::Disk(letter) | Prefix::VerbatimDisk(letter) => {
+            // 映射盘符回退:反解 Dos 设备,再看目标是否落在 WSL UNC 下
+            let drive = format!("{}:", letter as char);
+            crate::commands::misc::resolve_drive_to_unc(&drive).is_some_and(|unc| {
+                use std::path::Component as C;
+                unc.components().any(|c| match c {
+                    C::Prefix(p) => match p.kind() {
+                        Prefix::UNC(server, _) | Prefix::VerbatimUNC(server, _) => {
+                            let s = server.to_string_lossy();
+                            s.eq_ignore_ascii_case("wsl$")
+                                || s.eq_ignore_ascii_case("wsl.localhost")
+                        }
+                        _ => false,
+                    },
+                    _ => false,
+                })
+            })
+        }
+        _ => false,
     }
 }
 

@@ -1611,6 +1611,8 @@ pub fn run() {
             commands::delete_sessions,
             commands::launch_session_terminal,
             commands::get_tool_versions,
+            commands::list_wsl_distros,
+            commands::wsl_default_user,
             commands::run_tool_lifecycle_action,
             commands::probe_tool_installations,
             // Provider terminal
