@@ -97,6 +97,8 @@ export const hermesApiModes: Array<{
 ];
 
 export interface HermesProviderPreset {
+  /** 置顶预设：在预设网格中始终排在最前（本地内置渠道用） */
+  pinned?: boolean;
   name: string;
   nameKey?: string;
   websiteUrl: string;
@@ -784,5 +786,28 @@ export const hermesProviderPresets: HermesProviderPreset[] = [
     suggestedDefaults: {
       model: { default: "mimo-v2.5-pro", provider: "xiaomi_mimo_token_plan" },
     },
+  },
+  {
+    name: "Me-zai",
+    websiteUrl: "https://api.mezai.uk",
+    settingsConfig: {
+      name: "mezai",
+      base_url: "https://api.mezai.uk",
+      api_key: "",
+      api_mode: "chat_completions",
+      models: [
+        { id: "gpt-5.5", name: "GPT-5.5", context_length: 272000 },
+        {
+          id: "deepseek-v4-flash",
+          name: "DeepSeek V4 Flash",
+          context_length: 1000000,
+        },
+        { id: "kimi-k3", name: "Kimi K3", context_length: 1000000 },
+      ],
+    },
+    category: "third_party",
+    pinned: true,
+    icon: "mezai",
+    iconColor: "#6366F1",
   },
 ];

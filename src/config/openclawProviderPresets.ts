@@ -18,6 +18,8 @@ export interface OpenClawSuggestedDefaults {
 }
 
 export interface OpenClawProviderPreset {
+  /** 置顶预设：在预设网格中始终排在最前（本地内置渠道用） */
+  pinned?: boolean;
   name: string;
   nameKey?: string; // i18n key for localized display name
   websiteUrl: string;
@@ -1165,5 +1167,32 @@ export const openclawProviderPresets: OpenClawProviderPreset[] = [
     category: "cloud_provider",
     icon: "aws",
     iconColor: "#FF9900",
+  },
+  {
+    name: "Me-zai",
+    websiteUrl: "https://api.mezai.uk",
+    settingsConfig: {
+      baseUrl: "https://api.mezai.uk/v1",
+      apiKey: "",
+      api: "openai-completions",
+      models: [
+        { id: "gpt-5.5", name: "GPT-5.5", contextWindow: 272000 },
+        {
+          id: "deepseek-v4-pro",
+          name: "DeepSeek V4 Pro",
+          contextWindow: 1000000,
+        },
+        {
+          id: "deepseek-v4-flash",
+          name: "DeepSeek V4 Flash",
+          contextWindow: 1000000,
+        },
+        { id: "kimi-k3", name: "Kimi K3", contextWindow: 1000000 },
+      ],
+    },
+    category: "third_party",
+    pinned: true,
+    icon: "mezai",
+    iconColor: "#6366F1",
   },
 ];

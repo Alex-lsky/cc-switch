@@ -2,6 +2,21 @@
 import { IconMetadata } from "@/types/icon";
 
 export const iconMetadata: Record<string, IconMetadata> = {
+  mezai: {
+    name: "mezai",
+    displayName: "Me-zai",
+    category: "ai-provider",
+    keywords: [
+      "mezai",
+      "me-zai",
+      "new-api",
+      "gateway",
+      "relay",
+      "内置",
+      "渠道",
+    ],
+    defaultColor: "#6366F1",
+  },
   aigocode: {
     name: "aigocode",
     displayName: "AIGoCode",

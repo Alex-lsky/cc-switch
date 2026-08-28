@@ -95,19 +95,23 @@ export function sortPresetEntries(
     );
 
   if (sortMode === PresetSortMode.Original) {
-    // 置顶优先级：官方分类 > 尊享合作伙伴（Kimi）> 其余赞助商 > 非赞助商。
-    // 前三组用分区拼接而非排序，保持各自在预设文件里的相对顺序
-    // （赞助商的文件顺序与 README 赞助商表对齐）；非赞助商按显示名排序。
-    // 排他条件保证同时命中多组的预设只归入最前面的组、不被重复。
+    // 置顶优先级：pinned（本地内置渠道）> 官方分类 > 尊享合作伙伴（Kimi）>
+    // 其余赞助商 > 非赞助商。各组用分区拼接而非排序，保持各自在预设文件里
+    // 的相对顺序；非赞助商按显示名排序。排他条件保证同时命中多组的预设
+    // 只归入最前面的组、不被重复。
+    const pinned = entries.filter((entry) => entry.preset.pinned);
     const official = entries.filter(
-      (entry) => entry.preset.category === "official",
+      (entry) => !entry.preset.pinned && entry.preset.category === "official",
     );
     const prime = entries.filter(
       (entry) =>
-        entry.preset.category !== "official" && entry.preset.primePartner,
+        !entry.preset.pinned &&
+        entry.preset.category !== "official" &&
+        entry.preset.primePartner,
     );
     const partner = entries.filter(
       (entry) =>
+        !entry.preset.pinned &&
         entry.preset.category !== "official" &&
         !entry.preset.primePartner &&
         entry.preset.isPartner,
@@ -115,15 +119,20 @@ export function sortPresetEntries(
     const rest = entries
       .filter(
         (entry) =>
+          !entry.preset.pinned &&
           entry.preset.category !== "official" &&
           !entry.preset.primePartner &&
           !entry.preset.isPartner,
       )
       .sort(byDisplayName);
-    return [...official, ...prime, ...partner, ...rest];
+    return [...pinned, ...official, ...prime, ...partner, ...rest];
   }
 
-  return [...entries].sort(byDisplayName);
+  const pinned = entries.filter((entry) => entry.preset.pinned);
+  const rest = entries
+    .filter((entry) => !entry.preset.pinned)
+    .sort(byDisplayName);
+  return [...pinned, ...rest];
 }
 
 export interface PresetVisibilityOptions {

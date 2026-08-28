@@ -11,6 +11,8 @@ import type {
 import type { PresetTheme } from "./claudeProviderPresets";
 
 export interface CodexProviderPreset {
+  /** 置顶预设：在预设网格中始终排在最前（本地内置渠道用） */
+  pinned?: boolean;
   name: string;
   nameKey?: string; // i18n key for localized display name
   websiteUrl: string;
@@ -1077,5 +1079,8 @@ requires_openai_auth = true`,
       },
     ]),
     category: "third_party",
+    pinned: true,
+    icon: "mezai",
+    iconColor: "#6366F1",
   },
 ];
