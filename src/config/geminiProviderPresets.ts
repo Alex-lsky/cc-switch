@@ -42,6 +42,7 @@ export const geminiProviderPresets: GeminiProviderPreset[] = [
     },
     description: "Google 官方 Gemini API (OAuth)",
     category: "official",
+
     theme: {
       icon: "gemini",
       backgroundColor: "#4285F4",
@@ -50,7 +51,6 @@ export const geminiProviderPresets: GeminiProviderPreset[] = [
     icon: "gemini",
     iconColor: "#4285F4",
   },
-  // ===== 主流厂商预设（文件顺序不影响展示，按显示名排序） =====
   {
     name: "Qiniu",
     nameKey: "providerForm.presets.qiniu",
@@ -66,13 +66,13 @@ export const geminiProviderPresets: GeminiProviderPreset[] = [
     model: "gemini-3.6-flash",
     description: "Qiniu",
     category: "aggregator",
+
     endpointCandidates: [
       "https://api.qnaigc.com/bypass/vertex",
       "https://api.modelink.ai/bypass/vertex",
     ],
     icon: "qiniu",
   },
-  // ===== 其他预设 =====
   {
     name: "OpenRouter",
     websiteUrl: "https://openrouter.ai",

@@ -153,9 +153,9 @@ export const claudeDesktopProviderPresets: ClaudeDesktopProviderPreset[] = [
     icon: "anthropic",
     iconColor: "#D4915D",
   },
-  // ===== 主流厂商预设（文件顺序不影响展示，按显示名排序） =====
   {
     name: "Kimi",
+
     websiteUrl: "https://platform.kimi.com",
     category: "cn_official",
     baseUrl: "https://api.moonshot.cn/anthropic",
@@ -166,11 +166,13 @@ export const claudeDesktopProviderPresets: ClaudeDesktopProviderPreset[] = [
       "kimi-k2.7-code",
       "kimi-k2.7-code",
     ),
+
     icon: "kimi",
     iconColor: "#6366F1",
   },
   {
     name: "Kimi For Coding",
+
     websiteUrl: "https://www.kimi.com/code/",
     category: "cn_official",
     baseUrl: "https://api.kimi.com/coding/",
@@ -181,7 +183,37 @@ export const claudeDesktopProviderPresets: ClaudeDesktopProviderPreset[] = [
     iconColor: "#6366F1",
   },
   {
-    name: "火山Agentplan",
+    name: "Qiniu",
+    nameKey: "providerForm.presets.qiniu",
+    websiteUrl: "https://s.qiniu.com/nMvAvy",
+    apiKeyUrl: "https://s.qiniu.com/nMvAvy",
+    category: "aggregator",
+    baseUrl: "https://api.qnaigc.com",
+    mode: "direct",
+    apiFormat: "anthropic",
+    modelRoutes: passthroughRoutes(),
+    endpointCandidates: ["https://api.qnaigc.com", "https://api.modelink.ai"],
+
+    icon: "qiniu",
+  },
+  {
+    name: "火山 Agent Plan",
+    websiteUrl: "https://www.volcengine.com/activity/agentplan",
+    apiKeyUrl: "https://www.volcengine.com/activity/agentplan",
+    category: "cn_official",
+    baseUrl: "https://ark.cn-beijing.volces.com/api/plan",
+    mode: "proxy",
+    apiFormat: "anthropic",
+    modelRoutes: brandedRoutes(
+      "ark-code-latest",
+      "ark-code-latest",
+      "ark-code-latest",
+    ),
+    icon: "huoshan",
+    iconColor: "#3370FF",
+  },
+  {
+    name: "火山 Coding Plan",
     websiteUrl: "https://www.volcengine.com/activity/codingplan",
     apiKeyUrl: "https://www.volcengine.com/activity/codingplan",
     category: "cn_official",
@@ -227,6 +259,7 @@ export const claudeDesktopProviderPresets: ClaudeDesktopProviderPreset[] = [
       "doubao-seed-2-1-pro-260628",
       "doubao-seed-2-1-pro-260628",
     ),
+
     icon: "doubao",
     iconColor: "#3370FF",
   },
@@ -239,10 +272,11 @@ export const claudeDesktopProviderPresets: ClaudeDesktopProviderPreset[] = [
     mode: "proxy",
     apiFormat: "anthropic",
     modelRoutes: brandedRoutes(
-      "Pro/MiniMaxAI/MiniMax-M2.7",
-      "Pro/MiniMaxAI/MiniMax-M2.7",
-      "Pro/MiniMaxAI/MiniMax-M2.7",
+      "Pro/MiniMaxAI/MiniMax-M2.5",
+      "Pro/MiniMaxAI/MiniMax-M2.5",
+      "Pro/MiniMaxAI/MiniMax-M2.5",
     ),
+
     icon: "siliconflow",
     iconColor: "#6E29F6",
   },
@@ -255,10 +289,11 @@ export const claudeDesktopProviderPresets: ClaudeDesktopProviderPreset[] = [
     mode: "proxy",
     apiFormat: "anthropic",
     modelRoutes: brandedRoutes(
-      "MiniMaxAI/MiniMax-M2.7",
-      "MiniMaxAI/MiniMax-M2.7",
-      "MiniMaxAI/MiniMax-M2.7",
+      "MiniMaxAI/MiniMax-M3",
+      "MiniMaxAI/MiniMax-M3",
+      "MiniMaxAI/MiniMax-M3",
     ),
+
     icon: "siliconflow",
     iconColor: "#000000",
   },
@@ -273,6 +308,7 @@ export const claudeDesktopProviderPresets: ClaudeDesktopProviderPreset[] = [
     apiFormat: "anthropic",
     modelRoutes: passthroughRoutes(),
     endpointCandidates: ["https://api.modelverse.cn"],
+
     icon: "ucloud",
     iconColor: "#000000",
   },
@@ -287,23 +323,10 @@ export const claudeDesktopProviderPresets: ClaudeDesktopProviderPreset[] = [
     apiFormat: "anthropic",
     modelRoutes: passthroughRoutes(),
     endpointCandidates: ["https://cp.compshare.cn"],
+
     icon: "ucloud",
     iconColor: "#000000",
   },
-  {
-    name: "Qiniu",
-    nameKey: "providerForm.presets.qiniu",
-    websiteUrl: "https://s.qiniu.com/nMvAvy",
-    apiKeyUrl: "https://s.qiniu.com/nMvAvy",
-    category: "aggregator",
-    baseUrl: "https://api.qnaigc.com",
-    mode: "direct",
-    apiFormat: "anthropic",
-    modelRoutes: passthroughRoutes(),
-    endpointCandidates: ["https://api.qnaigc.com", "https://api.modelink.ai"],
-    icon: "qiniu",
-  },
-  // ===== 其他预设 =====
   {
     name: "Gemini Native",
     websiteUrl: "https://ai.google.dev/gemini-api",
@@ -384,10 +407,13 @@ export const claudeDesktopProviderPresets: ClaudeDesktopProviderPreset[] = [
     name: "OpenCode Go",
     websiteUrl: "https://opencode.ai/go",
     apiKeyUrl: "https://opencode.ai/go",
+
     category: "third_party",
     baseUrl: "https://opencode.ai/zen/go",
     mode: "proxy",
-    apiFormat: "openai_chat",
+    // Go 网关 /messages 收除 grok-4.5 外全部模型（Chat 组靠服务端转换），
+    // anthropic 透传即可；上游只认 x-api-key，apiKey 直填默认即该头。
+    apiFormat: "anthropic",
     modelRoutes: brandedRoutes(
       "deepseek-v4-flash",
       "deepseek-v4-flash",
@@ -396,6 +422,121 @@ export const claudeDesktopProviderPresets: ClaudeDesktopProviderPreset[] = [
     endpointCandidates: ["https://opencode.ai/zen/go"],
     icon: "opencode",
     iconColor: "#211E1E",
+  },
+  {
+    // 腾讯云 Token Plan 个人版：通用 + Hy 两系列共用端点与 Key，
+    // Auto 智能路由调用 ID 为 tc-code-latest（1823/130060）
+    name: "Tencent Token Plan",
+    websiteUrl: "https://cloud.tencent.com/product/tokenhub",
+    apiKeyUrl: "https://console.cloud.tencent.com/tokenhub/tokenplan",
+    category: "cn_official",
+    baseUrl: "https://api.lkeap.cloud.tencent.com/plan/anthropic",
+    mode: "proxy",
+    apiFormat: "anthropic",
+    modelRoutes: brandedRoutes(
+      "tc-code-latest",
+      "tc-code-latest",
+      "tc-code-latest",
+    ),
+    endpointCandidates: ["https://api.lkeap.cloud.tencent.com/plan/anthropic"],
+    icon: "tencent",
+    iconColor: "#0052D9",
+  },
+  {
+    // 国际站（新加坡）个人版（intl 1300/81315）：Auto 调用 ID 是 auto
+    name: "Tencent Token Plan (Intl)",
+    websiteUrl: "https://www.tencentcloud.com/products/tokenhub",
+    apiKeyUrl: "https://console.tencentcloud.com/tokenhub/tokenplan",
+    category: "cn_official",
+    baseUrl: "https://tokenhub-intl.tencentcloudmaas.com/plan/anthropic",
+    mode: "proxy",
+    apiFormat: "anthropic",
+    modelRoutes: brandedRoutes("auto", "auto", "auto"),
+    endpointCandidates: [
+      "https://tokenhub-intl.tencentcloudmaas.com/plan/anthropic",
+    ],
+    icon: "tencent",
+    iconColor: "#0052D9",
+  },
+  {
+    // Token Plan 企业版专业套餐（1823/130659，广州地域）
+    name: "Tencent Token Plan Enterprise Pro",
+    websiteUrl: "https://cloud.tencent.com/product/tokenhub",
+    apiKeyUrl: "https://console.cloud.tencent.com/tokenhub/tokenplan-e",
+    category: "cn_official",
+    baseUrl: "https://tokenhub.tencentmaas.com/plan/anthropic",
+    mode: "proxy",
+    apiFormat: "anthropic",
+    modelRoutes: brandedRoutes("auto", "auto", "auto"),
+    // 广州地域为默认端点；国内站企业套餐另可选新加坡地域（1823/130659、
+    // 131173 双地域表：tokenhub-intl.tencentmaas.com，需开通新加坡地域，
+    // 不支持跨地域调用，故仅作候选端点）
+    endpointCandidates: [
+      "https://tokenhub.tencentmaas.com/plan/anthropic",
+      "https://tokenhub-intl.tencentmaas.com/plan/anthropic",
+    ],
+    icon: "tencent",
+    iconColor: "#0052D9",
+  },
+  {
+    // 国际站企业版专业套餐（intl 1300/81489，新加坡地域）
+    name: "Tencent Token Plan Enterprise Pro (Intl)",
+    websiteUrl: "https://www.tencentcloud.com/products/tokenhub",
+    apiKeyUrl: "https://console.tencentcloud.com/tokenhub/tokenplan-e",
+    category: "cn_official",
+    baseUrl: "https://tokenhub-intl.tencentcloudmaas.com/plan/anthropic",
+    mode: "proxy",
+    apiFormat: "anthropic",
+    modelRoutes: brandedRoutes("auto", "auto", "auto"),
+    // 新加坡地域为默认端点；国际站企业套餐另可选广州地域（1300/81489、
+    // 81490 双地域表：tokenhub.tencentcloudmaas.com，需开通广州地域，
+    // 不支持跨地域调用，故仅作候选端点）
+    endpointCandidates: [
+      "https://tokenhub-intl.tencentcloudmaas.com/plan/anthropic",
+      "https://tokenhub.tencentcloudmaas.com/plan/anthropic",
+    ],
+    icon: "tencent",
+    iconColor: "#0052D9",
+  },
+  {
+    // Token Plan 企业版轻享套餐（1823/131173）：仅 Auto 模型
+    name: "Tencent Token Plan Enterprise Lite",
+    websiteUrl: "https://cloud.tencent.com/product/tokenhub",
+    apiKeyUrl: "https://console.cloud.tencent.com/tokenhub/tokenplan-e",
+    category: "cn_official",
+    baseUrl: "https://tokenhub.tencentmaas.com/plan/anthropic",
+    mode: "proxy",
+    apiFormat: "anthropic",
+    modelRoutes: brandedRoutes("auto", "auto", "auto"),
+    // 广州地域为默认端点；国内站企业套餐另可选新加坡地域（1823/130659、
+    // 131173 双地域表：tokenhub-intl.tencentmaas.com，需开通新加坡地域，
+    // 不支持跨地域调用，故仅作候选端点）
+    endpointCandidates: [
+      "https://tokenhub.tencentmaas.com/plan/anthropic",
+      "https://tokenhub-intl.tencentmaas.com/plan/anthropic",
+    ],
+    icon: "tencent",
+    iconColor: "#0052D9",
+  },
+  {
+    // 国际站企业版轻享套餐（intl 1300/81490，新加坡地域）
+    name: "Tencent Token Plan Enterprise Lite (Intl)",
+    websiteUrl: "https://www.tencentcloud.com/products/tokenhub",
+    apiKeyUrl: "https://console.tencentcloud.com/tokenhub/tokenplan-e",
+    category: "cn_official",
+    baseUrl: "https://tokenhub-intl.tencentcloudmaas.com/plan/anthropic",
+    mode: "proxy",
+    apiFormat: "anthropic",
+    modelRoutes: brandedRoutes("auto", "auto", "auto"),
+    // 新加坡地域为默认端点；国际站企业套餐另可选广州地域（1300/81489、
+    // 81490 双地域表：tokenhub.tencentcloudmaas.com，需开通广州地域，
+    // 不支持跨地域调用，故仅作候选端点）
+    endpointCandidates: [
+      "https://tokenhub-intl.tencentcloudmaas.com/plan/anthropic",
+      "https://tokenhub.tencentcloudmaas.com/plan/anthropic",
+    ],
+    icon: "tencent",
+    iconColor: "#0052D9",
   },
   {
     name: "Zhipu GLM",
@@ -440,6 +581,28 @@ export const claudeDesktopProviderPresets: ClaudeDesktopProviderPreset[] = [
     iconColor: "#2932E1",
   },
   {
+    // Token Plan 个人版：2026-07-13 起替代 Coding Plan 发售（存量 Coding
+    // Plan 可用至到期，旧预设保留）。模型=官方 Claude Code 接入页
+    // （2026-07-30 版）全角色 deepseek-v4-pro
+    name: "Baidu Qianfan Token Plan",
+    websiteUrl: "https://cloud.baidu.com/product/codingplan.html",
+    apiKeyUrl: "https://console.bce.baidu.com/qianfan/resource/token-plan",
+    category: "cn_official",
+    baseUrl: "https://qianfan.baidubce.com/anthropic/tokenplan/personal",
+    mode: "proxy",
+    apiFormat: "anthropic",
+    modelRoutes: brandedRoutes(
+      "deepseek-v4-pro",
+      "deepseek-v4-pro",
+      "deepseek-v4-pro",
+    ),
+    endpointCandidates: [
+      "https://qianfan.baidubce.com/anthropic/tokenplan/personal",
+    ],
+    icon: "baidu",
+    iconColor: "#2932E1",
+  },
+  {
     name: "Bailian",
     websiteUrl: "https://bailian.console.aliyun.com",
     category: "cn_official",
@@ -460,6 +623,55 @@ export const claudeDesktopProviderPresets: ClaudeDesktopProviderPreset[] = [
     modelRoutes: passthroughRoutes(),
     icon: "bailian",
     iconColor: "#624AFF",
+  },
+  {
+    name: "QwenCloud",
+    websiteUrl: "https://www.qwencloud.com",
+    apiKeyUrl: "https://home.qwencloud.com/api-keys",
+    category: "cn_official",
+    baseUrl: "https://dashscope-intl.aliyuncs.com/apps/anthropic",
+    mode: "proxy",
+    apiFormat: "anthropic",
+    modelRoutes: brandedRoutes(
+      "qwen3.7-max",
+      "qwen3.7-max",
+      "qwen3.6-flash",
+      true,
+    ),
+    icon: "qwen",
+    iconColor: "#6336E7",
+  },
+  {
+    name: "QwenCloud For Coding",
+    websiteUrl: "https://www.qwencloud.com",
+    apiKeyUrl: "https://home.qwencloud.com/api-keys",
+    category: "cn_official",
+    baseUrl: "https://coding-intl.dashscope.aliyuncs.com/apps/anthropic",
+    mode: "proxy",
+    apiFormat: "anthropic",
+    modelRoutes: brandedRoutes(
+      "qwen3.7-plus",
+      "qwen3.7-plus",
+      "qwen3.7-plus",
+      true,
+    ),
+    icon: "qwen",
+    iconColor: "#6336E7",
+  },
+  {
+    name: "QwenCloud Token Plan",
+    websiteUrl: "https://www.qwencloud.com",
+    apiKeyUrl: "https://home.qwencloud.com/api-keys",
+    category: "cn_official",
+    baseUrl:
+      "https://token-plan.ap-southeast-1.maas.aliyuncs.com/apps/anthropic",
+    mode: "proxy",
+    apiFormat: "anthropic",
+    // 不挂 [1m]：qwen3.8 系官方窗口是 983616，不足 1M，
+    // Desktop 对模型能力校验是精确的，误标会被上游拒绝
+    modelRoutes: brandedRoutes("qwen3.8-max", "qwen3.8-max", "qwen3.6-flash"),
+    icon: "qwen",
+    iconColor: "#6336E7",
   },
   {
     name: "StepFun",
@@ -503,9 +715,9 @@ export const claudeDesktopProviderPresets: ClaudeDesktopProviderPreset[] = [
     mode: "proxy",
     apiFormat: "anthropic",
     modelRoutes: brandedRoutes(
-      "ZhipuAI/GLM-5.1",
-      "ZhipuAI/GLM-5.1",
-      "ZhipuAI/GLM-5.1",
+      "ZhipuAI/GLM-5.2",
+      "ZhipuAI/GLM-5.2",
+      "ZhipuAI/GLM-5.2",
     ),
     icon: "modelscope",
     iconColor: "#624AFF",
@@ -531,6 +743,7 @@ export const claudeDesktopProviderPresets: ClaudeDesktopProviderPreset[] = [
     mode: "proxy",
     apiFormat: "anthropic",
     modelRoutes: brandedRoutes("MiniMax-M2.7", "MiniMax-M2.7", "MiniMax-M2.7"),
+
     theme: {
       backgroundColor: "#f64551",
       textColor: "#FFFFFF",
@@ -547,6 +760,7 @@ export const claudeDesktopProviderPresets: ClaudeDesktopProviderPreset[] = [
     mode: "proxy",
     apiFormat: "anthropic",
     modelRoutes: brandedRoutes("MiniMax-M2.7", "MiniMax-M2.7", "MiniMax-M2.7"),
+
     theme: {
       backgroundColor: "#f64551",
       textColor: "#FFFFFF",

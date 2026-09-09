@@ -73,7 +73,8 @@ fn sync_claude_preserves_live_only_user_keys() {
 
     let live: serde_json::Value = read_json_file(&settings_path).expect("read live");
     assert_eq!(
-        live.pointer("/env/ANTHROPIC_BASE_URL").and_then(|v| v.as_str()),
+        live.pointer("/env/ANTHROPIC_BASE_URL")
+            .and_then(|v| v.as_str()),
         Some("https://p1.example.com"),
         "env 仍由快照提供"
     );
@@ -296,7 +297,8 @@ fn switch_claude_carries_user_keys_to_new_provider() {
 
     let live: serde_json::Value = read_json_file(&settings_path).expect("read live");
     assert_eq!(
-        live.pointer("/env/ANTHROPIC_BASE_URL").and_then(|v| v.as_str()),
+        live.pointer("/env/ANTHROPIC_BASE_URL")
+            .and_then(|v| v.as_str()),
         Some("https://new.example.com"),
         "env 已切到新供应商"
     );

@@ -42,7 +42,8 @@
     "deleting": "Deleting...",
     "auto": "Auto",
     "enabled": "Enabled",
-    "notSet": "Not Set"
+    "notSet": "Not Set",
+    "collapse": "Collapse"
   },
   "firstRunNotice": {
     "title": "Welcome to CC Switch",
@@ -288,6 +289,7 @@
     "openclawNoModels": "No models configured",
     "openclawModelNotFound": "The selected model no longer exists. Refresh and try again.",
     "backfillWarning": "Switched successfully, but failed to save changes back to the previous provider",
+    "codexAuthCleanupFailed": "Switched successfully, but auth.json could not be removed — the official login credentials are still on disk; delete auth.json from the Codex config directory to remove them",
     "windowControlFailed": "Window control failed: {{error}}",
     "officialBlockedByProxy": "Cannot switch to official provider while local routing is active. Using routing with official APIs may cause account bans.",
     "proxyOfficialWarning": "Current provider {{name}} is official. Consider switching to a third-party provider before using local routing.",
@@ -764,6 +766,7 @@
           "alacritty": "Alacritty",
           "kitty": "Kitty",
           "ghostty": "Ghostty",
+          "otty": "Otty",
           "wezterm": "WezTerm",
           "kaku": "Kaku",
           "warp": "Warp"
@@ -994,7 +997,8 @@
       "effectiveApiRequired": "Model {{id}} needs an API, either directly or from the provider",
       "effectiveBaseUrlRequired": "Model {{id}} needs a base URL, either directly or from the provider",
       "duplicateModel": "Model ID {{id}} is duplicated",
-      "modelRequired": "Add at least one model"
+      "modelRequired": "Add at least one model",
+      "providerKeyDuplicate": "This provider key already exists"
     },
     "current": {
       "readFailed": "Could not read Pi's provider configuration",
@@ -1394,6 +1398,7 @@
     "reauthLogin": "Re-login",
     "reauthSelectHint": "This account needs to sign in again to enable managed binding.",
     "reauthNow": "Re-login now",
+    "duplicateAccount": "This ChatGPT account has already been added. Use the existing account.",
     "loggedInAccounts": "Logged in accounts",
     "defaultAccount": "Default",
     "selected": "Selected",
@@ -1694,6 +1699,13 @@
       "pi": "Pi"
     },
     "rawInputLabel": "Raw",
+    "sessionSync": {
+      "title": "Auto-Scan Session Logs",
+      "description": "Periodically scans each client's local session logs to track usage; when off, logs are only scanned on manual sync",
+      "syncNow": "Sync Now",
+      "syncCompleted": "Sync completed: {{imported}} imported, {{files}} files scanned, {{errors}} errors",
+      "syncFailed": "Session usage sync failed: {{error}}"
+    },
     "rebuildCodex": {
       "title": "Codex Usage Maintenance",
       "description": "Rebuild Codex session usage from local rollout logs",
@@ -2165,6 +2177,7 @@
     }
   },
   "profiles": {
+    "switcherAriaLabel": "Project: {{name}}",
     "switcherTooltip": {
       "claude": "Projects: switch the Claude Code provider / MCP / Skills / memory files in one click",
       "claude-desktop": "Projects: switch the Claude Desktop provider in one click",
@@ -2848,6 +2861,7 @@
     },
     "switchFailed": "Switch failed: {{error}}",
     "takeover": {
+      "ariaLabel": "{{appLabel}} local routing",
       "hint": "Select apps to route — once enabled, requests from that app will go through local routing",
       "enabled": "{{app}} routing enabled",
       "disabled": "{{app}} routing disabled",

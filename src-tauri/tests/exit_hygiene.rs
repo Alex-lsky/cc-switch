@@ -45,7 +45,11 @@ async fn exit_cleanup_restores_live_and_keeps_proxy_state() {
         .local_addr()
         .expect("addr")
         .port();
-    let mut proxy_config = state.db.get_proxy_config().await.expect("read proxy config");
+    let mut proxy_config = state
+        .db
+        .get_proxy_config()
+        .await
+        .expect("read proxy config");
     proxy_config.listen_port = free_port;
     state
         .db
@@ -106,7 +110,11 @@ async fn exit_cleanup_restores_live_and_keeps_proxy_state() {
         "keep_state 语义:enabled 必须保留,供下次启动自动恢复接管"
     );
 
-    let global_after = state.db.get_proxy_config().await.expect("read global config");
+    let global_after = state
+        .db
+        .get_proxy_config()
+        .await
+        .expect("read global config");
     assert!(
         !global_after.live_takeover_active,
         "退出后 takeover 活动标志必须清除"

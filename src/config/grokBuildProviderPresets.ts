@@ -10,8 +10,10 @@
  *   独立的 "Grok Official" 条目（对应 providers_seed.rs 的 seed，
  *   空 config = 不写自定义模型表）。
  * - 不含国产模型官方直连（cn_official）与纯开源模型托管站
- *   （SiliconFlow / ModelScope / Novita / Nvidia / AtlasCloud / OpenCode Go）：
+ *   （SiliconFlow / ModelScope / Novita / Nvidia / AtlasCloud）：
  *   这些上游没有 Grok 模型，无法在 Grok CLI 中使用。
+ * - OpenCode Go 上游自 2026-08 起已提供 grok-4.5，但暂仍不收录：
+ *   订阅制网关是否纳入 Grok 预设属产品决策，收录前需单独评估。
  * - 只收聚合站与第三方中转站，默认模型统一为 grok-4.5；
  *   OpenRouter 系命名空间的路由站用 "x-ai/grok-4.5"。
  *
@@ -77,34 +79,6 @@ requires_openai_auth = true`;
 }
 
 export const grokBuildProviderPresets: GrokBuildProviderPreset[] = [
-  // ===== 主流厂商预设（文件顺序不影响展示，按显示名排序） =====
-  {
-    name: "Compshare",
-    nameKey: "providerForm.presets.ucloud",
-    websiteUrl: "https://www.compshare.cn",
-    apiKeyUrl: "https://www.compshare.cn/coding-plan",
-    auth: grokAuth(),
-    config: grokPresetConfig("Compshare", "https://api.modelverse.cn/v1"),
-    endpointCandidates: ["https://api.modelverse.cn/v1"],
-    category: "aggregator",
-    icon: "ucloud",
-    iconColor: "#000000",
-  },
-  {
-    name: "Compshare Coding Plan",
-    nameKey: "providerForm.presets.ucloudCoding",
-    websiteUrl: "https://www.compshare.cn",
-    apiKeyUrl: "https://www.compshare.cn/coding-plan",
-    auth: grokAuth(),
-    config: grokPresetConfig(
-      "Compshare Coding Plan",
-      "https://cp.compshare.cn/v1",
-    ),
-    endpointCandidates: ["https://cp.compshare.cn/v1"],
-    category: "aggregator",
-    icon: "ucloud",
-    iconColor: "#000000",
-  },
   {
     name: "Qiniu",
     nameKey: "providerForm.presets.qiniu",
@@ -120,9 +94,38 @@ export const grokBuildProviderPresets: GrokBuildProviderPreset[] = [
       "https://api.modelink.ai/bypass/openai/v1",
     ],
     category: "aggregator",
+
     icon: "qiniu",
   },
-  // ===== 其他预设 =====
+  {
+    name: "Compshare",
+    nameKey: "providerForm.presets.ucloud",
+    websiteUrl: "https://www.compshare.cn",
+    apiKeyUrl: "https://www.compshare.cn/coding-plan",
+    auth: grokAuth(),
+    config: grokPresetConfig("Compshare", "https://api.modelverse.cn/v1"),
+    endpointCandidates: ["https://api.modelverse.cn/v1"],
+    category: "aggregator",
+
+    icon: "ucloud",
+    iconColor: "#000000",
+  },
+  {
+    name: "Compshare Coding Plan",
+    nameKey: "providerForm.presets.ucloudCoding",
+    websiteUrl: "https://www.compshare.cn",
+    apiKeyUrl: "https://www.compshare.cn/coding-plan",
+    auth: grokAuth(),
+    config: grokPresetConfig(
+      "Compshare Coding Plan",
+      "https://cp.compshare.cn/v1",
+    ),
+    endpointCandidates: ["https://cp.compshare.cn/v1"],
+    category: "aggregator",
+
+    icon: "ucloud",
+    iconColor: "#000000",
+  },
   {
     name: "xAI (Grok)",
     websiteUrl: "https://x.ai/api",

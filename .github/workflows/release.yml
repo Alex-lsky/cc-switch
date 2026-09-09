@@ -43,6 +43,12 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Validate fork release identity and version
+        shell: bash
+        run: |
+          node scripts/prepare-fork-release.mjs --check "$GITHUB_REF_NAME"
+          node --test scripts/prepare-fork-release.test.mjs
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -130,15 +136,18 @@ jobs:
 
       - name: Prepare Tauri signing key
         shell: bash
+        env:
+          RAW_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           # 调试：检查 Secret 是否存在
-          if [ -z "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ]; then
+          if [ -z "$RAW_SIGNING_KEY" ]; then
             echo "❌ TAURI_SIGNING_PRIVATE_KEY Secret 为空或不存在" >&2
             echo "请检查 GitHub 仓库 Settings > Secrets and variables > Actions" >&2
             exit 1
           fi
           
-          RAW="${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}"
+          RAW="$RAW_SIGNING_KEY"
           # 目标：提供正确的私钥“文件路径”给 Tauri CLI，避免内容解码歧义
           KEY_PATH="$RUNNER_TEMP/tauri_signing.key"
           # 情况 1：原始两行文本（第一行以 "untrusted comment:" 开头）
@@ -159,7 +168,6 @@ jobs:
                 echo "✅ 使用一行 Base64 私钥，已构造两行文件"
               else
                 echo "❌ TAURI_SIGNING_PRIVATE_KEY 格式无法识别：既不是两行原文，也不是其 base64，亦非一行 base64" >&2
-                echo "密钥前10个字符: $(echo "$RAW" | head -c 10)..." >&2
                 exit 1
               fi
             fi
@@ -178,9 +186,10 @@ jobs:
             echo "❌ 无法生成私钥 base64 内容" >&2
             exit 1
           fi
+          echo "::add-mask::$KEY_B64"
           echo "TAURI_SIGNING_PRIVATE_KEY=$KEY_B64" >> "$GITHUB_ENV"
-          if [ -n "${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}" ]; then
-            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}" >> $GITHUB_ENV
+          if [ -n "$SIGNING_KEY_PASSWORD" ]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$SIGNING_KEY_PASSWORD" >> $GITHUB_ENV
           fi
           echo "✅ Tauri signing key prepared"
 
@@ -345,7 +354,7 @@ jobs:
           DMG_STAGE_DIR="$RUNNER_TEMP/dmg-stage"
           rm -rf "$DMG_STAGE_DIR"
           mkdir -p "$DMG_STAGE_DIR"
-          ditto "$APP_PATH" "$DMG_STAGE_DIR/CC Switch.app"
+          ditto "$APP_PATH" "$DMG_STAGE_DIR/CC Switch Pro.app"
 
           # DMG codesigning only when Apple signing is enabled; otherwise ship
           # an unsigned DMG (still installable, just not Gatekeeper-notarized).
@@ -361,13 +370,13 @@ jobs:
 
           # shellcheck disable=SC2086 # intentional word-splitting of CODESIGN_ARG
           create-dmg \
-            --volname "CC Switch" \
+            --volname "CC Switch Pro" \
             --background "src-tauri/icons/dmg-background.png" \
             --window-size 660 400 \
             --window-pos 200 120 \
             --icon-size 80 \
-            --icon "CC Switch.app" 180 220 \
-            --hide-extension "CC Switch.app" \
+            --icon "CC Switch Pro.app" 180 220 \
+            --hide-extension "CC Switch Pro.app" \
             --app-drop-link 480 220 \
             $CODESIGN_ARG \
             --no-internet-enable \
@@ -613,154 +622,44 @@ jobs:
           fi
 
   publish-release:
-    name: Publish GitHub Release
+    name: Verify assets and publish GitHub Release
     runs-on: ubuntu-22.04
     needs: release
     permissions:
       contents: write
     steps:
-      - name: Download built release artifacts
+      - name: Checkout release sources
+        uses: actions/checkout@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+      - name: Download all platform artifacts
         uses: actions/download-artifact@v8
         with:
           pattern: release-assets-*
           path: release-assets
           merge-multiple: true
-
-      - name: List downloaded release artifacts
-        shell: bash
+      - name: Verify signatures and prepare complete updater manifest
+        env:
+          RELEASE_REPO: ${{ github.repository }}
         run: |
-          set -euo pipefail
-          ls -la release-assets
-
-      - name: Upload Release Assets
+          node --test scripts/prepare-fork-release.test.mjs
+          node scripts/prepare-fork-release.mjs --prepare "$GITHUB_REF_NAME" release-assets "$RELEASE_REPO"
+      - name: Stage release and assets as a draft
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: CC Switch Pro ${{ github.ref_name }}
+          draft: true
           prerelease: false
-          make_latest: true
-          body: |
-            ## CC Switch Pro ${{ github.ref_name }}
-
-            自维护 fork 版本（Claude Code / Codex / Gemini 供应商切换工具，含模型级 Responses/Chat 动态路由）。
-
-            ### 下载
-
-            - **macOS**: `CC-Switch-${{ github.ref_name }}-macOS.dmg`（推荐）或 `CC-Switch-${{ github.ref_name }}-macOS.zip`（解压即用）
-            - **Windows (x86_64)**: `CC-Switch-${{ github.ref_name }}-Windows.msi`（安装版）或 `CC-Switch-${{ github.ref_name }}-Windows-Portable.zip`（绿色版）
-            - **Windows (ARM64)**: `CC-Switch-${{ github.ref_name }}-Windows-arm64.msi`（安装版）或 `CC-Switch-${{ github.ref_name }}-Windows-arm64-Portable.zip`（绿色版）
-            - **Linux (x86_64)**: `CC-Switch-${{ github.ref_name }}-Linux-x86_64.AppImage` / `.deb` / `.rpm`
-            - **Linux (ARM64)**: `CC-Switch-${{ github.ref_name }}-Linux-arm64.AppImage` / `.deb` / `.rpm`
-
-            > `.tar.gz` 为 Tauri updater 自动更新专用，无需手动下载。
-
-            ---
-            ⚠️ macOS 版本未做 Apple 代码签名（fork 无 Developer 证书）。首次打开请**右键点击 → 打开**绕过 Gatekeeper，或在「系统设置 → 隐私与安全性」里点「仍要打开」。功能完全正常，Tauri 自更新走 minisign 签名，独立于 Apple 签名。
+          body_path: docs/release-notes/${{ github.ref_name }}-zh.md
           files: release-assets/*
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  assemble-latest-json:
-    name: Assemble latest.json
-    runs-on: ubuntu-22.04
-    needs: publish-release
-    permissions:
-      contents: write
-    steps:
-      - name: Prepare GH
-        run: |
-          gh --version || (type -p curl >/dev/null && sudo apt-get update && sudo apt-get install -y gh || true)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Download all release assets
+      - name: Publish complete release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euxo pipefail
-          TAG="${GITHUB_REF_NAME}"
-          mkdir -p dl
-          gh release download "$TAG" --dir dl --repo "$GITHUB_REPOSITORY"
-          ls -la dl || true
-      - name: Generate latest.json
-        env:
-          REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          VERSION="${TAG#v}"
-          PUB_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          base_url="https://github.com/$REPO/releases/download/$TAG"
-          # 初始化空平台映射
-          mac_url=""; mac_sig=""
-          win_x64_url=""; win_x64_sig=""
-          win_arm64_url=""; win_arm64_sig=""
-          linux_x64_url=""; linux_x64_sig=""
-          linux_arm64_url=""; linux_arm64_sig=""
-          shopt -s nullglob
-          for sig in dl/*.sig; do
-            base=${sig%.sig}
-            fname=$(basename "$base")
-            url="$base_url/$fname"
-            sig_content=$(cat "$sig")
-            case "$fname" in
-              *.tar.gz)
-                # 视为 macOS updater artifact
-                mac_url="$url"; mac_sig="$sig_content";;
-              *-Windows-arm64.msi)
-                win_arm64_url="$url"; win_arm64_sig="$sig_content";;
-              *-Windows.msi)
-                win_x64_url="$url"; win_x64_sig="$sig_content";;
-              *-Linux-arm64.AppImage|*-Linux-arm64.appimage)
-                linux_arm64_url="$url"; linux_arm64_sig="$sig_content";;
-              *-Linux-x86_64.AppImage|*-Linux-x86_64.appimage)
-                linux_x64_url="$url"; linux_x64_sig="$sig_content";;
-            esac
-          done
-          # 构造 JSON（仅包含存在的目标）
-          tmp_json=$(mktemp)
-          {
-            echo '{'
-            echo "  \"version\": \"$VERSION\",";
-            echo "  \"notes\": \"Release $TAG\",";
-            echo "  \"pub_date\": \"$PUB_DATE\",";
-            echo '  "platforms": {'
-            first=1
-            if [ -n "$mac_url" ] && [ -n "$mac_sig" ]; then
-              # 为兼容 arm64 / x64，重复写入两个键，指向同一 universal 包
-              for key in darwin-aarch64 darwin-x86_64; do
-                [ $first -eq 0 ] && echo ','
-                echo "    \"$key\": {\"signature\": \"$mac_sig\", \"url\": \"$mac_url\"}"
-                first=0
-              done
-            fi
-            if [ -n "$win_x64_url" ] && [ -n "$win_x64_sig" ]; then
-              [ $first -eq 0 ] && echo ','
-              echo "    \"windows-x86_64\": {\"signature\": \"$win_x64_sig\", \"url\": \"$win_x64_url\"}"
-              first=0
-            fi
-            if [ -n "$win_arm64_url" ] && [ -n "$win_arm64_sig" ]; then
-              [ $first -eq 0 ] && echo ','
-              echo "    \"windows-aarch64\": {\"signature\": \"$win_arm64_sig\", \"url\": \"$win_arm64_url\"}"
-              first=0
-            fi
-            if [ -n "$linux_x64_url" ] && [ -n "$linux_x64_sig" ]; then
-              [ $first -eq 0 ] && echo ','
-              echo "    \"linux-x86_64\": {\"signature\": \"$linux_x64_sig\", \"url\": \"$linux_x64_url\"}"
-              first=0
-            fi
-            if [ -n "$linux_arm64_url" ] && [ -n "$linux_arm64_sig" ]; then
-              [ $first -eq 0 ] && echo ','
-              echo "    \"linux-aarch64\": {\"signature\": \"$linux_arm64_sig\", \"url\": \"$linux_arm64_url\"}"
-              first=0
-            fi
-            echo '  }'
-            echo '}'
-          } > "$tmp_json"
-          echo "Generated latest.json:" && cat "$tmp_json"
-          mv "$tmp_json" latest.json
-      - name: Upload latest.json to release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euxo pipefail
-          gh release upload "$GITHUB_REF_NAME" latest.json --clobber --repo "$GITHUB_REPOSITORY"
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest --repo "$GITHUB_REPOSITORY"
