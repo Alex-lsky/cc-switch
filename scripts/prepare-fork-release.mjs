@@ -80,14 +80,16 @@ export function validateReleaseVersion(root, tag) {
   const config = JSON.parse(
     readFileSync(join(root, "src-tauri/tauri.conf.json"), "utf8"),
   );
-  const cargo = readFileSync(join(root, "src-tauri/Cargo.toml"), "utf8").match(
-    /^version\s*=\s*"([^"]+)"/m,
-  )?.[1];
-  const lock = readFileSync(join(root, "src-tauri/Cargo.lock"), "utf8").match(
-    /\[\[package\]\]\nname = "cc-switch"\nversion = "([^"]+)"/,
-  )?.[1];
+  const cargo = readFileSync(join(root, "src-tauri/Cargo.toml"), "utf8")
+    .replace(/\r\n/g, "\n")
+    .match(/^version\s*=\s*"([^"]+)"/m)?.[1];
+  const lock = readFileSync(join(root, "src-tauri/Cargo.lock"), "utf8")
+    .replace(/\r\n/g, "\n")
+    .match(/\[\[package\]\]\nname = "cc-switch"\nversion = "([^"]+)"/)?.[1];
   if (![pkg.version, config.version, cargo, lock].every((v) => v === version))
-    throw new Error("Release versions do not match tag");
+    throw new Error(
+      `Release versions do not match tag: expected ${version}, got pkg=${pkg.version}, config=${config.version}, cargo=${cargo}, lock=${lock}`,
+    );
   if (
     config.productName !== "CC Switch Pro" ||
     config.identifier !== "com.mezaicc.switchpro" ||
