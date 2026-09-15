@@ -351,7 +351,8 @@ export function useProviderActions(
             activeApp === "gemini" ||
             activeApp === "opencode" ||
             activeApp === "openclaw" ||
-            activeApp === "hermes"
+            activeApp === "hermes" ||
+            activeApp === "mcode"
           ) {
             // 这些工具在启动时读取配置文件，切换后需重启终端/CLI 才生效
             messageKey = "notifications.terminalRestartRequired";

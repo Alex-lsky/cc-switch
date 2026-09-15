@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import type { AppId } from "@/lib/api";
 import type { ResolvedDirectories } from "@/hooks/useSettings";
 
-type DirectoryAppId = Exclude<AppId, "claude-desktop">;
+type DirectoryAppId = Exclude<AppId, "claude-desktop" | "mcode">;
 
 interface DirectorySettingsProps {
   appConfigDir?: string;
