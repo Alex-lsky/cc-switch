@@ -5,6 +5,23 @@ All notable changes to CC Switch will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Pro 3.20.5] - 2026-09-26
+
+### Changed
+
+- Integrate upstream main (f3b18df..e0f70019) by topic: 68 commits across Codex/official OAuth compatibility, proxy protocol fixes, the new MiniMax Code harness and refreshed Codex CN presets and pricing, while keeping the fork's neutral preset policy and skipping sponsor/marketing-only commits.
+
+### Fixed
+
+- Codex official (ChatGPT) takeover: raise the OAuth client identity to 0.155.0 so GPT-6 Sol/Luna appear, and honor the proxy URL via `openai_base_url` when `model_provider` is omitted (previously requests bypassed the local proxy).
+- Strip the deprecated top-level `disable_response_storage` key from live Codex config on every write/restore so existing provider TOMLs stop tripping Codex's "unrecognized configuration setting" warning; new provider templates stop emitting it.
+- Proxy protocol: preserve max effort for GPT-6 Sol/Luna and GPT-5.6/Astra, accept the grok-4.x (x>=5) effort whitelist, omit missing tool descriptions, lift additional_tools carriers, normalize detail:original images for Chat gateways, clamp sub-floor max_tokens, skip empty reasoning_content SSE placeholders, and strip the stop param for GitHub Copilot.
+- Codex core: recover stale account bindings during takeover, keep stored auth when the live snapshot has no credential, skip unchanged rollout tails, persist a byte cursor for growing rollouts, honor proxy URLs, and parse Images API streaming usage from image_generation.completed events.
+- Add the MiniMax Code harness (presets, install/update detection, provider state refresh) and refresh CN Codex presets per the Responses API audit (Qwen3.8 catalog, vision-capable glm-5.3-flash, Kimi native Responses direct-connect) plus new Grok 4.7 / GLM-5.3-FlashX / Claude Opus 5.5 / Anthropic & OpenAI pricing seeds.
+- Misc: OpenCode batch model add, Claude Desktop Linux 3P configuration, output tokens/sec in request logs, skills archive limits and skillId mismatches, WSL probe/output handling, tray managed-account quota, and assorted UI fixes.
+
+See `docs/release-notes/v3.20.5-zh.md` for upgrade and download instructions.
+
 ## [Pro 3.20.4] - 2026-09-09
 
 ### Changed
