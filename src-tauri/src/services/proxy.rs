@@ -8335,11 +8335,8 @@ model = "gpt-5.1-codex"
         crate::settings::reload_settings().expect("reload settings");
 
         let db = Arc::new(Database::memory().expect("init db"));
-        db.set_config_snippet(
-            "codex",
-            Some("model_verbosity = \"high\"\n".to_string()),
-        )
-        .expect("set common config snippet");
+        db.set_config_snippet("codex", Some("model_verbosity = \"high\"\n".to_string()))
+            .expect("set common config snippet");
 
         let service = ProxyService::new(db.clone());
 
