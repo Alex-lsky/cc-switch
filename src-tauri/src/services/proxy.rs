@@ -4548,7 +4548,9 @@ args = ["echo-server"]
         assert!(!live_config.contains("mezai"));
         assert!(!live_config.contains("mezai-key"));
         assert!(!live_config.contains(PROXY_TOKEN_PLACEHOLDER));
-        assert!(live_config.contains("disable_response_storage = true"));
+        // 顶层 disable_response_storage 已被新版 Codex CLI 移除，写入时会被
+        // strip_deprecated_config_keys 剥掉——重置后的 live 不应再带该键
+        assert!(!live_config.contains("disable_response_storage"));
         assert!(live_config.contains("[mcp_servers.echo]"));
 
         assert_eq!(
@@ -8335,7 +8337,7 @@ model = "gpt-5.1-codex"
         let db = Arc::new(Database::memory().expect("init db"));
         db.set_config_snippet(
             "codex",
-            Some("disable_response_storage = true\n".to_string()),
+            Some("model_verbosity = \"high\"\n".to_string()),
         )
         .expect("set common config snippet");
 
@@ -8380,7 +8382,7 @@ base_url = "https://codex.example/v1"
             .expect("config string");
 
         assert!(
-            config.contains("disable_response_storage = true"),
+            config.contains("model_verbosity = \"high\""),
             "common config should be applied into Codex restore backup"
         );
     }

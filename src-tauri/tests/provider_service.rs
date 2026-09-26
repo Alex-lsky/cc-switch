@@ -2864,7 +2864,8 @@ fn switch_codex_syncs_shared_keys_from_live_into_common_config() {
     let _home = ensure_test_home();
 
     // A 激活状态下的 live：A 专属路由 + 已共享的 [tui] + 用户刚加的
-    // disable_response_storage + cc-switch 注入产物 + MCP 同步投影
+    // model_verbosity（共享键示例；disable_response_storage 已废弃并在写入时
+    // 被剥离，不再作为共享键样本）+ cc-switch 注入产物 + MCP 同步投影
     // + 顶层 wire_api（无 model_provider 时的 fallback 写法，属 A 的路由语义）
     // + 历史错误格式 [mcp.servers]（sync_all_enabled 清不掉的孤儿形态）
     let live_config = r#"model = "gpt-5.5"
@@ -2873,7 +2874,7 @@ wire_api = "chat"
 experimental_bearer_token = "sk-a-live-secret"
 model_catalog_json = "cc-switch-model-catalog.json"
 web_search = "disabled"
-disable_response_storage = true
+model_verbosity = "high"
 
 [tui]
 notifications = true
@@ -2947,7 +2948,7 @@ command = "ghost-cmd"
         .expect("read snippet")
         .expect("snippet present");
     assert!(
-        snippet.contains("disable_response_storage = true"),
+        snippet.contains("model_verbosity = \"high\""),
         "newly added shared key should be captured, got: {snippet}"
     );
     assert!(
@@ -2975,8 +2976,13 @@ command = "ghost-cmd"
     let live_after = std::fs::read_to_string(cc_switch_lib::get_codex_config_path())
         .expect("read config.toml after switch");
     assert!(
-        live_after.contains("disable_response_storage = true"),
+        live_after.contains("model_verbosity = \"high\""),
         "shared key should propagate to the next provider's live, got: {live_after}"
+    );
+    // 废弃键即便混进共享片段，也会在写入 live 时被剥离
+    assert!(
+        !live_after.contains("disable_response_storage"),
+        "deprecated key must be stripped from live, got: {live_after}"
     );
     assert!(
         live_after.contains("model_provider = \"bprov\""),
@@ -3020,7 +3026,7 @@ command = "ghost-cmd"
         "provider-owned top-level wire_api must survive backfill, got: {stored_a_config}"
     );
     for forbidden in [
-        "disable_response_storage",
+        "model_verbosity",
         "notifications",
         "mcp_servers",
         "experimental_bearer_token",
