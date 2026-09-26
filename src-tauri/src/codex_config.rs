@@ -1048,12 +1048,13 @@ pub fn write_codex_live_atomic(
     };
 
     // 准备写入内容
-    let cfg_text = match config_text_opt {
+    let mut cfg_text = match config_text_opt {
         Some(s) => s.to_string(),
         None => String::new(),
     };
     if !cfg_text.trim().is_empty() {
         toml::from_str::<toml::Table>(&cfg_text).map_err(|e| AppError::toml(&config_path, e))?;
+        cfg_text = strip_deprecated_config_keys(&cfg_text);
     }
 
     // 第一步：写 auth.json
@@ -1093,6 +1094,25 @@ pub fn validate_config_toml(text: &str) -> Result<(), AppError> {
         .map_err(|e| AppError::toml(Path::new("config.toml"), e))
 }
 
+/// 顶层 `disable_response_storage` 已被新版 Codex CLI 移除——配置校验器会报
+/// "unrecognized configuration setting ... is ignored"，响应存储行为改为自动
+/// 处理（openai/codex#2760 键变更）。存量供应商 TOML 由旧模板生成，仍带着该键；
+/// 写 live 配置前在这里幂等剥离，让存量配置在任意一次切换后自愈。
+/// 用 toml_edit 文档模型保注释与键序；解析失败原样返回，交由调用方校验报错。
+pub(crate) fn strip_deprecated_config_keys(cfg_text: &str) -> String {
+    if cfg_text.trim().is_empty() || !cfg_text.contains("disable_response_storage") {
+        return cfg_text.to_string();
+    }
+    let Ok(mut doc) = cfg_text.parse::<DocumentMut>() else {
+        return cfg_text.to_string();
+    };
+    if doc.remove("disable_response_storage").is_some() {
+        doc.to_string()
+    } else {
+        cfg_text.to_string()
+    }
+}
+
 /// 读取并校验 `~/.codex/config.toml`，返回文本（可能为空）
 pub fn read_and_validate_codex_config_text() -> Result<String, AppError> {
     let s = read_codex_config_text()?;
@@ -1124,13 +1144,14 @@ pub(crate) fn is_custom_codex_model_provider_id(id: &str) -> bool {
 /// should not overwrite the user's ChatGPT login cache.
 pub fn write_codex_live_config_atomic(config_text_opt: Option<&str>) -> Result<(), AppError> {
     let config_path = get_codex_config_path();
-    let cfg_text = match config_text_opt {
+    let mut cfg_text = match config_text_opt {
         Some(config_text) => config_text.to_string(),
         None => String::new(),
     };
 
     if !cfg_text.trim().is_empty() {
         toml::from_str::<toml::Table>(&cfg_text).map_err(|e| AppError::toml(&config_path, e))?;
+        cfg_text = strip_deprecated_config_keys(&cfg_text);
     }
 
     write_text_file(&config_path, &cfg_text)
@@ -4313,6 +4334,41 @@ mod tests {
     use serde_json::json;
     use serial_test::serial;
     use std::ffi::OsString;
+
+    #[test]
+    fn strip_deprecated_config_keys_removes_top_level_disable_response_storage() {
+        // 旧模板生成的存量配置：键在顶层、带注释与既有键序，剥离后应原样保留
+        let input = r#"# user comment
+model_provider = "custom"
+model = "gpt-6-sol"
+disable_response_storage = true
+model_reasoning_effort = "high"
+
+[model_providers.custom]
+name = "NewAPI"
+wire_api = "responses"
+"#;
+        let stripped = strip_deprecated_config_keys(input);
+        assert!(!stripped.contains("disable_response_storage"));
+        assert!(stripped.contains("# user comment"));
+        assert!(stripped.contains("[model_providers.custom]"));
+        let model_pos = stripped.find("model = ").unwrap();
+        let effort_pos = stripped.find("model_reasoning_effort = ").unwrap();
+        assert!(model_pos < effort_pos, "must not reorder keys: {stripped}");
+    }
+
+    #[test]
+    fn strip_deprecated_config_keys_is_noop_when_key_absent() {
+        let input = "model_provider = \"custom\"\nmodel = \"gpt-6-sol\"\n";
+        assert_eq!(strip_deprecated_config_keys(input), input);
+        assert_eq!(strip_deprecated_config_keys(""), "");
+    }
+
+    #[test]
+    fn strip_deprecated_config_keys_passthrough_invalid_toml() {
+        let input = "not [ valid toml";
+        assert_eq!(strip_deprecated_config_keys(input), input);
+    }
 
     #[test]
     fn codex_id_token_user_identity_requires_a_nonempty_subject() {

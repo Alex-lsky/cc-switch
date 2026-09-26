@@ -1413,7 +1413,11 @@ impl LiveSnapshot {
                 }
 
                 if let Some(text) = config {
-                    crate::config::write_text_file(&config_path, text)?;
+                    // 恢复的快照可能来自旧版写入，同样剥掉已废弃的顶层键
+                    crate::config::write_text_file(
+                        &config_path,
+                        &crate::codex_config::strip_deprecated_config_keys(text),
+                    )?;
                 } else if config_path.exists() {
                     delete_file(&config_path)?;
                 }
