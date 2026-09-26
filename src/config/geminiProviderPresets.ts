@@ -111,11 +111,11 @@ export const geminiProviderPresets: GeminiProviderPreset[] = [
     settingsConfig: {
       env: {
         GOOGLE_GEMINI_BASE_URL: "https://api.mezai.uk",
-        GEMINI_MODEL: "gemini-3.6-flash-high",
+        GEMINI_MODEL: "Gemini 3.8 Flash",
       },
     },
     baseURL: "https://api.mezai.uk",
-    model: "gemini-3.6-flash-high",
+    model: "Gemini 3.8 Flash",
     description: "Me-zai 统一中转（Gemini 兼容协议）",
     category: "third_party",
     pinned: true,

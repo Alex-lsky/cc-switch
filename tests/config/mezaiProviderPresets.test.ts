@@ -32,8 +32,10 @@ describe("Me-zai built-in presets", () => {
     expect(preset?.config).toContain('wire_api = "responses"');
     expect(preset?.auth).toEqual({ OPENAI_API_KEY: "" });
     const catalog = preset?.modelCatalog ?? [];
-    expect(catalog.length).toBeGreaterThanOrEqual(12);
-    expect(catalog.some((m) => m.model === "gpt-5.5")).toBe(true);
+    expect(catalog.length).toBeGreaterThanOrEqual(13);
+    // 目录[0] 须与 config.toml 的 model 一致
+    expect(catalog[0].model).toBe("gpt-6-sol");
+    expect(catalog.some((m) => m.model === "mimo-v2.6-pro")).toBe(true);
   });
 
   it("registers a Claude preset pointing at the Me-zai gateway", () => {

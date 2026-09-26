@@ -68,15 +68,17 @@ export function generateThirdPartyConfig(
     // requires_openai_auth = true 会被后端 keyless 安全闸拒绝切换
     // （provider.codex.config.official_auth_fallback）。
     requiresOpenAiAuth?: boolean;
+    // 预设可按厂商目录声明默认推理档；不传保持 Codex 通用默认 high
+    reasoningEffort?: string;
   },
 ): string {
   const tomlString = (value: string) => JSON.stringify(value);
   const requiresOpenAiAuth = options?.requiresOpenAiAuth ?? true;
+  const reasoningEffort = options?.reasoningEffort ?? "high";
 
   return `model_provider = "custom"
 model = ${tomlString(modelName)}
-model_reasoning_effort = "high"
-disable_response_storage = true
+model_reasoning_effort = ${tomlString(reasoningEffort)}
 
 [model_providers.custom]
 name = ${tomlString(providerName)}
@@ -2265,7 +2267,9 @@ requires_openai_auth = true`,
     config: generateThirdPartyConfig(
       "Me-zai",
       "https://api.mezai.uk/v1",
-      "gpt-5.5",
+      "gpt-6-sol",
+      // 本机现行配置：默认模型 gpt-6-sol + xhigh 推理档
+      { reasoningEffort: "xhigh" },
     ),
     endpointCandidates: ["https://api.mezai.uk/v1"],
     // Me-zai 上游为 new-api 统一中转：原生 /v1/responses 直通（ChatGPT/Codex
@@ -2273,49 +2277,97 @@ requires_openai_auth = true`,
     // 声明 xhigh，1M 上下文模型按中转实际配置。
     apiFormat: "openai_responses",
     modelCatalog: modelCatalog([
-      { model: "gpt-5.5", displayName: "GPT-5.5", contextWindow: 272000 },
       {
-        model: "gpt-5.6-luna",
-        displayName: "GPT-5.6 Luna",
-        contextWindow: 272000,
-      },
-      {
-        model: "gpt-5.6-sol",
-        displayName: "GPT-5.6 Sol",
-        contextWindow: 272000,
+        model: "gpt-6-sol",
+        displayName: "GPT-6 Sol",
+        contextWindow: 1000000,
+        reasoningLevels: ["low", "medium", "high", "xhigh", "ultra"],
+        defaultReasoningLevel: "high",
       },
       {
         model: "gpt-5.6-terra",
         displayName: "GPT-5.6 Terra",
         contextWindow: 272000,
-      },
-      { model: "grok-4.5", displayName: "Grok 4.5", contextWindow: 400000 },
-      {
-        model: "deepseek-v4-flash",
-        displayName: "DeepSeek V4 Flash",
-        contextWindow: 1000000,
-      },
-      { model: "kimi-k3", displayName: "Kimi K3", contextWindow: 1000000 },
-      {
-        model: "Gemini 3.7 Flash",
-        displayName: "Gemini 3.7 Flash",
-        contextWindow: 1000000,
-      },
-      { model: "glm-5.3", displayName: "GLM-5.3", contextWindow: 1000000 },
-      {
-        model: "muse-spark-1.2-contributor",
-        displayName: "Muse Spark 1.2 Contributor",
-        contextWindow: 1000000,
+        reasoningLevels: ["low", "medium", "high", "xhigh"],
+        defaultReasoningLevel: "medium",
       },
       {
-        model: "claude-opus-4-6",
-        displayName: "Claude Opus 4.6",
+        model: "kimi-k3",
+        displayName: "Kimi K3",
         contextWindow: 1000000,
+        reasoningLevels: ["low", "medium", "high"],
+        defaultReasoningLevel: "medium",
+      },
+      {
+        model: "Gemini 3.8 Flash",
+        displayName: "Gemini 3.8 Flash",
+        contextWindow: 1000000,
+        reasoningLevels: ["low", "medium", "high", "xhigh"],
+        defaultReasoningLevel: "high",
+      },
+      {
+        model: "muse-spark-1.3-contributor",
+        displayName: "Muse Spark 1.3 Contributor",
+        contextWindow: 1000000,
+        reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
+        defaultReasoningLevel: "high",
+      },
+      {
+        model: "gpt-6-astra",
+        displayName: "GPT-6 Astra",
+        contextWindow: 1000000,
+        reasoningLevels: ["low", "medium", "high", "xhigh", "ultra"],
+        defaultReasoningLevel: "high",
+      },
+      {
+        model: "deepseek-v4.1-flash",
+        displayName: "DeepSeek V4.1 Flash",
+        contextWindow: 1000000,
+        reasoningLevels: ["medium", "high", "xhigh", "max"],
+        defaultReasoningLevel: "high",
       },
       {
         model: "glm-5.3-flash",
         displayName: "GLM-5.3 Flash",
         contextWindow: 1000000,
+        reasoningLevels: ["medium", "high", "xhigh", "max"],
+        defaultReasoningLevel: "high",
+      },
+      {
+        model: "glm-5.3",
+        displayName: "GLM-5.3",
+        contextWindow: 1000000,
+        inputModalities: ["text"],
+        reasoningLevels: ["medium", "high", "xhigh", "max"],
+        defaultReasoningLevel: "high",
+      },
+      {
+        model: "mimo-v2.6-flash",
+        displayName: "MiMo v2.6 Flash",
+        contextWindow: 1000000,
+        reasoningLevels: ["medium", "high", "xhigh", "max"],
+        defaultReasoningLevel: "high",
+      },
+      {
+        model: "mimo-v2.6-pro",
+        displayName: "MiMo v2.6 Pro",
+        contextWindow: 1000000,
+        reasoningLevels: ["medium", "high", "xhigh", "max"],
+        defaultReasoningLevel: "high",
+      },
+      {
+        model: "mimo-v2.6-pro-ultraspeed",
+        displayName: "MiMo v2.6 Pro Ultraspeed",
+        contextWindow: 1000000,
+        reasoningLevels: ["medium", "high", "xhigh", "max"],
+        defaultReasoningLevel: "high",
+      },
+      {
+        model: "gpt-6-luna",
+        displayName: "GPT-6 Luna",
+        contextWindow: 1000000,
+        reasoningLevels: ["low", "medium", "high", "xhigh"],
+        defaultReasoningLevel: "high",
       },
     ]),
     category: "third_party",

@@ -883,7 +883,7 @@ export const claudeDesktopProviderPresets: ClaudeDesktopProviderPreset[] = [
     baseUrl: "https://api.mezai.uk",
     mode: "proxy",
     apiFormat: "anthropic",
-    modelRoutes: brandedRoutes("gpt-5.5", "gpt-5.5", "gpt-5.5"),
+    modelRoutes: brandedRoutes("gpt-6-sol", "gpt-6-sol", "gpt-6-sol"),
     icon: "mezai",
     iconColor: "#6366F1",
   },
