@@ -112,7 +112,7 @@ describe("McodeProviderForm", () => {
     expect(saved.api).toBe("openai-completions");
     expect(saved.options.apiKey).toBe("test-key");
     expect(saved).not.toHaveProperty("npm");
-    expect(saved.models).toHaveProperty("MiniMax-M3");
+    expect(saved.models).toHaveProperty("MiniMax-M2.7");
   });
 
   it("keeps invalid JSON drafts from breaking the structured fields", () => {
@@ -143,7 +143,7 @@ describe("McodeProviderForm", () => {
     expect(mcode.settingsConfig.options.baseURL).toBe(
       pi.settingsConfig.baseUrl,
     );
-    expect(Object.keys(mcode.settingsConfig.models)).toContain("MiniMax-M3");
+    expect(Object.keys(mcode.settingsConfig.models)).toContain("MiniMax-M2.7");
     expect(mcode.settingsConfig).not.toHaveProperty("compat");
     expect(pi.settingsConfig.models).toBeInstanceOf(Array);
     expect(

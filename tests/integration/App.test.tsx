@@ -208,6 +208,7 @@ describe("App integration with MSW", () => {
     localStorage.removeItem("cc-switch-last-app");
   });
 
+  // 全量并行跑时各步骤累计耗时可能超过 vitest 默认 10s 测试时限
   it("covers basic provider flows via real hooks", async () => {
     const { default: App } = await import("@/App");
     renderApp(App);
@@ -263,7 +264,7 @@ describe("App integration with MSW", () => {
 
     expect(toastErrorMock).not.toHaveBeenCalled();
     expect(toastSuccessMock).toHaveBeenCalled();
-  }, 10_000);
+  }, 30_000);
 
   it("resets provider view scroll when switching apps", async () => {
     const { default: App } = await import("@/App");
@@ -303,7 +304,7 @@ describe("App integration with MSW", () => {
     expect(mainScrollContainer.scrollLeft).toBe(0);
     expect(providerScrollContainer!.scrollTop).toBe(0);
     expect(providerScrollContainer!.scrollLeft).toBe(0);
-  }, 10_000);
+  }, 30_000);
 
   it("shows toast when auto sync fails in background", async () => {
     const { default: App } = await import("@/App");

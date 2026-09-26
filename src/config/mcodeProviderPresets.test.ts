@@ -28,7 +28,7 @@ describe("mcodeProviderPresets", () => {
     expect(Object.keys(mcode!.settingsConfig.models)).toEqual(
       pi.settingsConfig.models.map((model) => model.id),
     );
-    const opus = mcode!.settingsConfig.models["claude-opus-5-5"];
+    const opus = mcode!.settingsConfig.models["claude-opus-5"];
     expect(opus.compat).toEqual({ forceAdaptiveThinking: true });
     expect(opus.thinking).toEqual({
       effortOptions: ["low", "medium", "high", "xhigh", "max"],
@@ -36,19 +36,16 @@ describe("mcodeProviderPresets", () => {
   });
 
   it("keeps dialect presets, relying on compat instead of effort options", () => {
-    const deepseek = Object.values(mcodePreset("PPIO")!.settingsConfig.models);
-    expect(deepseek[0].compat).toMatchObject({
-      thinkingFormat: "deepseek",
-      requiresReasoningContentOnAssistantMessages: true,
-    });
-    expect(deepseek[0]).not.toHaveProperty("thinking");
-
-    const qwen =
-      mcodePreset("千问AI平台")!.settingsConfig.models["qwen3.8-max"];
-    expect(qwen.compat).toEqual({
-      thinkingFormat: "qwen",
-      supportsDeveloperRole: false,
-    });
+    // fork 的 Pi 预设清单尚未声明 thinkingFormat 方言兼容（上游 PPIO /
+    // 千问AI平台 才有），DeepSeek / Qwen 系 mcode 模型因此不携带 compat，
+    // 也不注入 effort options——方言处理交给后端默认行为。
+    const deepseek = Object.values(
+      mcodePreset("DeepSeek")!.settingsConfig.models,
+    );
+    for (const model of deepseek) {
+      expect(model).not.toHaveProperty("thinking");
+      expect(model.compat).toBeUndefined();
+    }
   });
 
   it("skips only the models whose compat MCode cannot express", () => {

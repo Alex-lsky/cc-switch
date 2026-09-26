@@ -73,7 +73,7 @@ const expectedChatPresets = new Map<
     "SiliconFlow",
     {
       baseUrl: "https://api.siliconflow.cn/v1",
-      contextWindows: { "deepseek-ai/DeepSeek-V4-Flash": 1048576 },
+      contextWindows: { "Pro/MiniMaxAI/MiniMax-M2.5": 196608 },
     },
   ],
   [
@@ -84,24 +84,17 @@ const expectedChatPresets = new Map<
     },
   ],
   [
-    "AtlasCloud",
-    {
-      baseUrl: "https://api.atlascloud.ai/v1",
-      contextWindows: { "zai-org/glm-5.2": 1048576 },
-    },
-  ],
-  [
     "Novita AI",
     {
       baseUrl: "https://api.novita.ai/openai/v1",
-      contextWindows: { "zai-org/glm-5.3": 1048576 },
+      contextWindows: { "zai-org/glm-5.1": 202800 },
     },
   ],
   [
     "Nvidia",
     {
       baseUrl: "https://integrate.api.nvidia.com/v1",
-      contextWindows: { "moonshotai/kimi-k3": 1048576 },
+      contextWindows: { "moonshotai/kimi-k2.5": 262144 },
     },
   ],
   [
@@ -109,9 +102,9 @@ const expectedChatPresets = new Map<
     {
       baseUrl: "https://opencode.ai/zen/go/v1",
       contextWindows: {
-        "glm-5.3": 1000000,
-        "glm-5.3-flash": 1000000,
-        "kimi-k3": 1048576,
+        "glm-5.2": 204800,
+        "glm-5.1": 204800,
+        "kimi-k2.7-code": 262144,
         "deepseek-v4-pro": 1048576,
         "deepseek-v4-flash": 1048576,
         "mimo-v2.5-pro": 1048576,
@@ -160,7 +153,7 @@ describe("Codex Chat provider presets", () => {
   });
 
   it("keeps open-weight Qwen models scoped to pay-as-you-go catalogs", () => {
-    for (const name of ["千问AI平台", "QwenCloud"]) {
+    for (const name of ["Bailian", "QwenCloud"]) {
       const preset = codexProviderPresets.find((item) => item.name === name);
       expect(preset, name).toBeDefined();
       expect(preset?.modelCatalog).toEqual(
@@ -176,7 +169,7 @@ describe("Codex Chat provider presets", () => {
         ]),
       );
     }
-    for (const name of ["千问AI平台 Token Plan", "QwenCloud Token Plan"]) {
+    for (const name of ["QwenCloud Token Plan"]) {
       const preset = codexProviderPresets.find((item) => item.name === name);
       expect(preset, name).toBeDefined();
       const models = preset?.modelCatalog?.map((row) => row.model) ?? [];
@@ -381,9 +374,9 @@ describe("Codex Chat provider presets", () => {
         ]),
       ),
     ).toEqual({
-      "glm-5.3": ["low", "high", "max"],
-      "glm-5.3-flash": ["low", "high", "max"],
-      "kimi-k3": ["max"],
+      "glm-5.2": ["high", "max"],
+      "glm-5.1": null,
+      "kimi-k2.7-code": null,
       "deepseek-v4-pro": ["high", "max"],
       "deepseek-v4-flash": ["low", "high", "max"],
       "mimo-v2.5-pro": null,
