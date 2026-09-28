@@ -3317,20 +3317,23 @@ pub fn neutralize_codex_official_auth_fallback_for_proxy_oauth(
     Some(doc.to_string())
 }
 
-/// Align the active custom provider table's `requires_openai_auth` with the
-/// login-preservation setting on a third-party switch.
+/// Normalize the active custom provider table's `requires_openai_auth` to
+/// `false` on a third-party switch (#7490).
 ///
-/// On Codex 0.149 the flag never decides request auth for these tables —
+/// On Codex 0.149+ the flag never decides request auth for these tables —
 /// `resolve_provider_auth` short-circuits on `env_key` /
-/// `experimental_bearer_token` before consulting it — but it does drive the
-/// login UX: `true` with no login in `auth.json` traps the TUI in the
-/// login/onboarding screen (preservation off deletes the file on every
-/// third-party switch), while `false` next to a preserved ChatGPT login
-/// makes Codex treat the session as logged out (account state hidden, the
-/// preserved tokens never refreshed). Stored third-party configs cannot be
-/// trusted here: presets and the custom template carried
-/// `requires_openai_auth = true` from the pre-0.149 era when auth.json held
-/// the third-party key, so the stamp overrides whatever the card says.
+/// `experimental_bearer_token` before consulting it — so the injected token
+/// alone carries the third-party credential. What `true` does add is the
+/// official-account side channel: Codex treats the session as a ChatGPT
+/// login and runs the official usage check (account probe at startup /
+/// session start; the desktop App additionally degrades to the Luna
+/// Reserve flow). With the official quota exhausted that check locks the
+/// composer — the "Usage Limit reached" state disables sending even though
+/// every model request would route to the third party — which is exactly
+/// the regression upstream #7490 reported and verified against `false` +
+/// bearer token. The stale-token cost of `false` (the preserved login is
+/// not refreshed through Codex) is mild by comparison: the login stays on
+/// disk, the desktop model gate still sees it, and re-login restores it.
 ///
 /// Only tables that short-circuit request auth (`env_key` or an
 /// injected/stored `experimental_bearer_token`) are touched. Stamping
@@ -3338,17 +3341,16 @@ pub fn neutralize_codex_official_auth_fallback_for_proxy_oauth(
 /// the preserved official OAuth login — the exact leak the safety gates
 /// refuse — and keyless header-auth or local-server tables must keep their
 /// user-authored shape (0.149 keeps them unauthenticated either way).
+/// Official ChatGPT-backend relay cards (they consume the OAuth token, so
+/// they never carry a bearer token) therefore keep `true` by construction,
+/// and keyring/auto store cards bypass this stamp in the takeover writer.
 ///
-/// `preserve_official_login` is the post-write login state of `auth.json`.
-/// The direct-switch plan derives it from the preservation setting (which
-/// decides whether the file survives the switch); the takeover writer
-/// derives it from the live file itself — takeover never touches
-/// `auth.json`, but it no longer owns the file's presence (a
-/// preservation-off direct switch deletes it before takeover is enabled),
-/// so the stored card's flag cannot be trusted there either.
+/// The `preserve_official_login` parameter is retained for signature
+/// stability but deliberately ignored: the flag no longer tracks the
+/// login state, because tracking it is what produced the quota lock.
 pub(crate) fn align_codex_requires_openai_auth_with_login_preservation(
     config_text: &str,
-    preserve_official_login: bool,
+    _preserve_official_login: bool,
 ) -> Result<String, AppError> {
     if !config_text.contains("model_providers") {
         return Ok(config_text.to_string());
@@ -3378,14 +3380,11 @@ pub(crate) fn align_codex_requires_openai_auth_with_login_preservation(
     if provider_table
         .get("requires_openai_auth")
         .and_then(|item| item.as_bool())
-        == Some(preserve_official_login)
+        == Some(false)
     {
         return Ok(config_text.to_string());
     }
-    provider_table.insert(
-        "requires_openai_auth",
-        toml_edit::value(preserve_official_login),
-    );
+    provider_table.insert("requires_openai_auth", toml_edit::value(false));
     Ok(doc.to_string())
 }
 
@@ -5949,15 +5948,15 @@ base_url = "https://bedrock.example/v1"
     }
 
     #[test]
-    fn third_party_plan_stamps_requires_openai_auth_to_match_preservation() {
+    fn third_party_plan_stamps_requires_openai_auth_false_for_bearer_cards() {
         // Presets and the custom template shipped `requires_openai_auth =
         // true` from the pre-0.149 era (auth.json carried the third-party
         // key back then). On 0.149 the injected bearer decides request auth
-        // either way, but the flag drives the login UX: true with auth.json
-        // deleted (preservation off) traps the TUI in the login screen,
-        // false next to a preserved login hides the official account and
-        // lets its tokens go stale. The plan overrides the stored value
-        // with the preservation setting.
+        // either way, and `true` only adds the official-account side
+        // channel: the startup usage check that locks the composer once the
+        // official quota is exhausted (#7490), plus the desktop App's Luna
+        // Reserve degradation. The plan therefore stamps `false` for every
+        // short-circuit card under both preservation settings.
         let auth = json!({"OPENAI_API_KEY": "sk-test"});
         let stale_true = "model_provider = \"relay\"\n\n[model_providers.relay]\nname = \"Relay\"\nbase_url = \"https://relay.example/v1\"\nwire_api = \"responses\"\nrequires_openai_auth = true\n";
 
@@ -5975,25 +5974,27 @@ base_url = "https://bedrock.example/v1"
         );
         assert!(off.remove_auth_file, "preservation off deletes auth.json");
 
+        // #7490 regression lock: preservation on with a login on disk must
+        // also stamp false — true is what locked the composer after the
+        // official quota ran out even though requests routed to the relay.
         let on = plan_codex_live_write(None, &auth, Some(stale_true), true)
             .expect("third-party plan with preservation on");
         let on_text = on.config_text.expect("plan carries config");
         assert!(
-            on_text.contains("requires_openai_auth = true"),
-            "preservation on must keep/stamp the flag true; got:\n{on_text}"
+            on_text.contains("requires_openai_auth = false")
+                && !on_text.contains("requires_openai_auth = true"),
+            "preservation on must stamp the stale flag to false (#7490); got:\n{on_text}"
         );
         assert!(!on.remove_auth_file, "preservation on keeps auth.json");
 
-        // A card that never carried the flag gets it stamped too — the
-        // preserved login stays visible to Codex (account state + token
-        // refresh) only through requires_openai_auth = true.
+        // A card that never carried the flag gets false stamped too.
         let flagless = "model_provider = \"relay\"\n\n[model_providers.relay]\nname = \"Relay\"\nbase_url = \"https://relay.example/v1\"\nwire_api = \"responses\"\n";
         let on_flagless = plan_codex_live_write(None, &auth, Some(flagless), true)
             .expect("third-party plan for a flagless card");
         let on_flagless_text = on_flagless.config_text.expect("plan carries config");
         assert!(
-            on_flagless_text.contains("requires_openai_auth = true"),
-            "preservation on must stamp flagless cards; got:\n{on_flagless_text}"
+            on_flagless_text.contains("requires_openai_auth = false"),
+            "preservation on must stamp flagless bearer cards to false; got:\n{on_flagless_text}"
         );
     }
 

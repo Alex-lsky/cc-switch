@@ -480,13 +480,15 @@ requires_openai_auth = true
         Some("bridge-key"),
         "third-party key should be injected into the selected live provider table"
     );
+    // #7490：带注入 bearer token 的卡一律规整为 false——true 只会触发
+    // 官方账号用量检查（官方额度耗尽时锁死发送）
     assert_eq!(
         parsed_live
             .get("model_providers")
             .and_then(|v| v.get("aihubmix"))
             .and_then(|v| v.get("requires_openai_auth"))
             .and_then(|v| v.as_bool()),
-        Some(true)
+        Some(false)
     );
 
     ProviderService::switch(&state, AppType::Codex, "plain-provider")

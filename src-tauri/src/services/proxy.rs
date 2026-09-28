@@ -6867,9 +6867,9 @@ model = "gpt-5-codex"
         )
         .expect("seed live OAuth auth");
 
-        // The card omits the flag: with a login on disk it is stamped true so
-        // Codex keeps showing the account and refreshing the preserved tokens
-        // (the placeholder bearer token still short-circuits request auth).
+        // The card omits the flag: it gets stamped false alongside the
+        // placeholder bearer token (#7490) — true would run the official
+        // usage check and lock the composer once the official quota is out.
         let mut provider = Provider::with_id(
             "kimi".to_string(),
             "Kimi".to_string(),
@@ -6901,9 +6901,12 @@ wire_api = "responses"
 
         let live_config = std::fs::read_to_string(crate::codex_config::get_codex_config_path())
             .expect("read live config");
+        // #7490：登录在盘也不再盖 true——bearer token 独立完成鉴权，true 只会
+        // 触发官方用量检查，官方额度耗尽时把发送按钮锁死
         assert!(
-            live_config.contains("requires_openai_auth = true"),
-            "login on disk: the flag must be stamped true; got:\n{live_config}"
+            live_config.contains("requires_openai_auth = false"),
+            "login on disk: the flag must be stamped false (#7490); got:
+{live_config}"
         );
         assert!(live_config.contains(&format!(
             "experimental_bearer_token = \"{PROXY_TOKEN_PLACEHOLDER}\""
