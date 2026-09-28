@@ -79,17 +79,17 @@ test("rejects malformed signature instead of producing partial metadata", () => 
   );
 });
 test("checks tag, all version files, app identity, and update source", () => {
-  validateReleaseVersion(process.cwd(), "v3.20.5");
+  validateReleaseVersion(process.cwd(), "v3.20.6");
   assert.throws(
-    () => validateReleaseVersion(process.cwd(), "v3.20.4"),
+    () => validateReleaseVersion(process.cwd(), "v3.20.5"),
     /versions/,
   );
   assert.throws(
-    () => validateReleaseVersion(process.cwd(), "v3.20.5-rc1"),
+    () => validateReleaseVersion(process.cwd(), "v3.20.6-rc1"),
     /stable/,
   );
   assert.throws(
-    () => prepareRelease(process.cwd(), ".", "v3.20.5", "farion1231/cc-switch"),
+    () => prepareRelease(process.cwd(), ".", "v3.20.6", "farion1231/cc-switch"),
     /outside/,
   );
 });

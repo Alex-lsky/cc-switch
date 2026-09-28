@@ -5,6 +5,14 @@ All notable changes to CC Switch will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Pro 3.20.6] - 2026-09-28
+
+### Fixed
+
+- Codex third-party switching no longer stamps `requires_openai_auth = true` on providers carrying an injected bearer token (upstream #7490). The flag never decided request auth for those cards, but it made Codex run the official ChatGPT account usage check — so once the official quota was exhausted the composer locked ("Usage Limit reached", send disabled) even though requests were already routed to the third party, and the desktop App degraded to the Luna Reserve flow. The flag is now written as `false` for every bearer-token card under both preservation settings; existing cards self-heal on the next switch. Official ChatGPT-backend relay cards (which consume the OAuth token and never carry a bearer token) and keyring/auto store cards are unaffected.
+
+See `docs/release-notes/v3.20.6-zh.md` for upgrade and download instructions.
+
 ## [Pro 3.20.5] - 2026-09-26
 
 ### Changed
