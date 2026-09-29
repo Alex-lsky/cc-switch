@@ -5,6 +5,14 @@ All notable changes to CC Switch will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Pro 3.20.7] - 2026-09-29
+
+### Fixed
+
+- Restore the official account display in the Codex/ChatGPT desktop App lost in v3.20.6 (#7490 follow-up). The write paths keep stamping `requires_openai_auth = false` (sending always works), and after every Codex switch or takeover enable a background probe queries the preserved official login's rate limits: when every window is below 100% the live flag is promoted back to `true`, restoring the bottom-left account display and official token refresh — exactly when they cannot lock the composer. While the official quota is exhausted (or the probe fails) the flag stays `false`, so third-party sending keeps working through the window.
+
+See `docs/release-notes/v3.20.7-zh.md` for upgrade and download instructions.
+
 ## [Pro 3.20.6] - 2026-09-28
 
 ### Fixed
