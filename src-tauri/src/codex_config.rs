@@ -488,7 +488,7 @@ pub(crate) fn codex_managed_oauth_live_auth_marker_exists() -> bool {
 /// 托管账号写入的完整 bundle 会额外带 `tokens.refresh_token` 与顶层 `last_refresh`，
 /// 这里一并容忍。Codex CLI 自刷新会轮换 access_token，因此短期 token 指纹不能
 /// 作为稳定的所有权谓词；cc-switch 的本地账号 ID 单独记录在 marker 中。
-fn extract_codex_managed_oauth_account_id(auth: &Value) -> Option<String> {
+pub(crate) fn extract_codex_managed_oauth_account_id(auth: &Value) -> Option<String> {
     let auth_obj = auth.as_object()?;
 
     if auth_obj.keys().any(|key| {
@@ -3406,12 +3406,19 @@ pub(crate) fn codex_quota_allows_account_display(quota: &SubscriptionQuota) -> b
         && quota.tiers.iter().all(|tier| tier.utilization < 100.0)
 }
 
+/// 提升探测用的官方登录凭证：由命令层从认证中心管理器解析
+/// （必要时自动刷新），避免盘上 access_token 在 false 期过期后卡住探测。
+pub struct CodexProbeCredential {
+    pub access_token: String,
+    pub chatgpt_account_id: Option<String>,
+}
+
 /// 额度感知的账户显示提升（#7490 后续）：写入路径默认把 bearer 卡盖成
 /// false（安全态，不锁发送）。切换 / 接管完成后由命令层调用本函数：官方登录在盘且所有限额
 /// 窗口未达 100% 时，把 live 配置提升为 true——恢复桌面 App 左下角账户显示与官方
 /// token 自动刷新；额度可用时探查不会锁定会话。探测失败、非官方登录、官方卡或
 /// 网络异常时保持 false（发送永远可用）。
-pub async fn promote_codex_account_display_if_quota_available() {
+pub async fn promote_codex_account_display_if_quota_available(fresh: Option<CodexProbeCredential>) {
     use crate::services::subscription::query_codex_quota;
 
     let run = async {
@@ -3424,24 +3431,33 @@ pub async fn promote_codex_account_display_if_quota_available() {
         if auth.get("auth_mode").and_then(|v| v.as_str()) != Some("chatgpt") {
             return Ok::<bool, AppError>(false);
         }
-        let Some(access_token) = auth
-            .pointer("/tokens/access_token")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|t| !t.is_empty())
-        else {
-            return Ok::<bool, AppError>(false);
-        };
-        let account_id = auth
-            .pointer("/tokens/account_id")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|id| !id.is_empty());
+        // 探测令牌优先用调用方从认证中心管理器解析的新鲜令牌（自动刷新）；
+        // 非托管登录才退回盘上 access_token——它可能在 false 期已过期。
+        let (access_token, account_id) =
+            if let Some(fresh) = fresh.filter(|c| !c.access_token.trim().is_empty()) {
+                (fresh.access_token, fresh.chatgpt_account_id)
+            } else {
+                let Some(access_token) = auth
+                    .pointer("/tokens/access_token")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|t| !t.is_empty())
+                else {
+                    return Ok::<bool, AppError>(false);
+                };
+                let account_id = auth
+                    .pointer("/tokens/account_id")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|id| !id.is_empty());
+                (access_token.to_string(), account_id.map(str::to_string))
+            };
+        let account_id = account_id.as_deref();
         let quota = tokio::time::timeout(
             std::time::Duration::from_secs(3),
             query_codex_quota(
-                access_token,
-                account_id.as_deref(),
+                &access_token,
+                account_id,
                 "codex_preserved_login",
                 "Preserved Codex login token expired",
             ),

@@ -61,6 +61,7 @@ pub async fn get_proxy_takeover_status(
 /// 为指定应用开启/关闭接管
 #[tauri::command]
 pub async fn set_proxy_takeover_for_app(
+    app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     app_type: String,
     enabled: bool,
@@ -72,7 +73,9 @@ pub async fn set_proxy_takeover_for_app(
     // #7490 后续：接管写入后，官方登录在盘且额度未耗尽时恢复账户显示。
     if enabled && app_type == "codex" {
         tauri::async_runtime::spawn(async move {
-            crate::codex_config::promote_codex_account_display_if_quota_available().await;
+            let fresh =
+                super::codex_oauth::resolve_preserved_login_probe_credential(&app_handle).await;
+            crate::codex_config::promote_codex_account_display_if_quota_available(fresh).await;
         });
     }
     Ok(())

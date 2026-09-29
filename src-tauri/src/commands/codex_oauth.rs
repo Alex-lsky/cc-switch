@@ -9,7 +9,7 @@ use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
 use crate::services::model_fetch::FetchedModel;
 use crate::services::subscription::{query_codex_quota, CredentialStatus, SubscriptionQuota};
 use std::sync::Arc;
-use tauri::State;
+use tauri::{Manager, State};
 
 /// Codex OAuth 认证状态
 ///
@@ -17,6 +17,32 @@ use tauri::State;
 /// 直接持有 `Arc`，不再包一层 `RwLock`——避免任一命令持有粗粒度锁跨网络刷新
 /// 时阻塞其他命令（切换 / 认证中心操作 / token 读取）。
 pub struct CodexOAuthState(pub Arc<CodexOAuthManager>);
+
+/// 解析保留官方登录的探测凭证（#7490 后续）：live auth.json 若对应认证
+/// 中心的托管账号，则取管理器的有效 token（必要时自动刷新），避免盘上
+/// access_token 在 false 期过期后卡住额度探测。非托管登录或任何一步
+/// 失败返回 None，调用方退回盘上 token。
+pub async fn resolve_preserved_login_probe_credential(
+    app: &tauri::AppHandle,
+) -> Option<crate::codex_config::CodexProbeCredential> {
+    let auth: serde_json::Value =
+        crate::config::read_json_file(&crate::codex_config::get_codex_auth_path()).ok()?;
+    let managed_account_id = crate::codex_config::extract_codex_managed_oauth_account_id(&auth)?;
+    let state = app.try_state::<CodexOAuthState>()?;
+    let manager = &state.0;
+    let access_token = manager
+        .get_valid_token_for_account(&managed_account_id)
+        .await
+        .ok()?;
+    let chatgpt_account_id = manager
+        .chatgpt_account_id_for_account(&managed_account_id)
+        .await
+        .ok();
+    Some(crate::codex_config::CodexProbeCredential {
+        access_token,
+        chatgpt_account_id,
+    })
+}
 
 /// 查询 Codex OAuth (ChatGPT Plus/Pro) 订阅额度
 ///

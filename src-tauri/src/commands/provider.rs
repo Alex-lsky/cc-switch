@@ -123,6 +123,7 @@ pub async fn switch_provider(
 ) -> Result<SwitchResult, String> {
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
     let is_codex = matches!(app_type, AppType::Codex);
+    let promote_handle = app_handle.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
         let state = app_handle
             .try_state::<AppState>()
@@ -135,7 +136,9 @@ pub async fn switch_provider(
     // 官方登录在盘且额度未耗尽时，后台恢复账户显示；探测异常不影响切换结果。
     if is_codex && result.is_ok() {
         tauri::async_runtime::spawn(async move {
-            crate::codex_config::promote_codex_account_display_if_quota_available().await;
+            let fresh =
+                super::codex_oauth::resolve_preserved_login_probe_credential(&promote_handle).await;
+            crate::codex_config::promote_codex_account_display_if_quota_available(fresh).await;
         });
     }
     result
