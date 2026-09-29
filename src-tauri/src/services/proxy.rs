@@ -3905,38 +3905,27 @@ impl ProxyService {
                     &prepared_config,
                 )
                 .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
-                // Takeover never touches auth.json, but it no longer owns the
-                // file's presence: a preservation-off direct switch deletes
-                // the login before takeover is enabled, and `codex logout`
-                // can remove it mid-takeover. The stored card's
-                // `requires_openai_auth` (presets carried `true` from the
-                // pre-0.149 era) would then trap the TUI in the login screen
-                // — Codex decides that screen from the flag and its account
-                // probe alone, never from the bearer token — so stamp the
-                // flag to the observed login state, exactly as the direct
-                // switch does. When the state is undecidable from disk
-                // (keyring-backed or auto stores) the card's flag is left
-                // alone. Proxy-injected OAuth cards (xai_oauth, copilot) are
-                // excluded outright: the effective snapshot already carries
-                // the neutralized `false` (`neutralize_codex_proxy_oauth_fallback`)
-                // because the official login is never their credential, and
-                // a login on disk must not raise it back to `true`.
+                // Safe default (#7490): stamp false — sending always works;
+                // the quota-aware promotion step may flip the live flag to
+                // true after the write when the official quota allows it.
+                // When the login state is undecidable from disk (keyring or
+                // auto credential stores) the card's stored flag is left
+                // alone, and proxy-injected OAuth cards (xai_oauth,
+                // copilot) keep their neutralized `false`.
                 let proxy_injected_oauth =
                     provider.is_some_and(Provider::uses_proxy_injected_oauth);
-                let live_login_state = if proxy_injected_oauth {
-                    None
+                let login_state_undecidable = if proxy_injected_oauth {
+                    true
                 } else {
-                    Self::codex_live_login_state(&injected)
+                    Self::codex_live_login_state(&injected).is_none()
                 };
-                match live_login_state {
-                    Some(live_has_login) => {
-                        crate::codex_config::align_codex_requires_openai_auth_with_login_preservation(
-                            &injected,
-                            live_has_login,
-                        )
-                        .map_err(|e| format!("写入 Codex 配置失败: {e}"))?
-                    }
-                    None => injected,
+                if login_state_undecidable {
+                    injected
+                } else {
+                    crate::codex_config::align_codex_requires_openai_auth_with_login_preservation(
+                        &injected, false,
+                    )
+                    .map_err(|e| format!("写入 Codex 配置失败: {e}"))?
                 }
             };
             crate::codex_config::write_codex_live_config_atomic(Some(&live_config))

@@ -7,6 +7,7 @@ use crate::config::{
 };
 use crate::error::AppError;
 use crate::model_capabilities::{image_input_capability_from_modalities, ImageInputCapability};
+use crate::services::subscription::{CredentialStatus, SubscriptionQuota};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
@@ -707,7 +708,7 @@ pub fn codex_auth_matches_recorded_managed_oauth(
                 "Failed to read Codex managed OAuth auth marker at {}: {err}",
                 marker_path.display()
             );
-            return Ok(false);
+            return Ok::<bool, AppError>(false);
         }
     };
 
@@ -3317,8 +3318,8 @@ pub fn neutralize_codex_official_auth_fallback_for_proxy_oauth(
     Some(doc.to_string())
 }
 
-/// Normalize the active custom provider table's `requires_openai_auth` to
-/// `false` on a third-party switch (#7490).
+/// Normalize the active custom provider table's `requires_openai_auth` for
+/// third-party cards carrying a request-auth short-circuit (#7490).
 ///
 /// On Codex 0.149+ the flag never decides request auth for these tables —
 /// `resolve_provider_auth` short-circuits on `env_key` /
@@ -3345,12 +3346,17 @@ pub fn neutralize_codex_official_auth_fallback_for_proxy_oauth(
 /// they never carry a bearer token) therefore keep `true` by construction,
 /// and keyring/auto store cards bypass this stamp in the takeover writer.
 ///
-/// The `preserve_official_login` parameter is retained for signature
-/// stability but deliberately ignored: the flag no longer tracks the
-/// login state, because tracking it is what produced the quota lock.
+/// Because the account display and the quota lock are two faces of the same
+/// probe, the write paths split by safety: the direct-switch plan and the
+/// takeover writer stamp `false` unconditionally (sending always works; a
+/// switch made while the official quota is out can never lock the app),
+/// and the quota-aware promotion step flips the live flag to `true` only
+/// after probing the preserved login and finding every rate-limit window
+/// below 100% — restoring the account display and token refresh exactly
+/// when they cannot lock. See `promote_codex_account_display_if_quota_available`.
 pub(crate) fn align_codex_requires_openai_auth_with_login_preservation(
     config_text: &str,
-    _preserve_official_login: bool,
+    show_official_account: bool,
 ) -> Result<String, AppError> {
     if !config_text.contains("model_providers") {
         return Ok(config_text.to_string());
@@ -3380,12 +3386,90 @@ pub(crate) fn align_codex_requires_openai_auth_with_login_preservation(
     if provider_table
         .get("requires_openai_auth")
         .and_then(|item| item.as_bool())
-        == Some(false)
+        == Some(show_official_account)
     {
         return Ok(config_text.to_string());
     }
-    provider_table.insert("requires_openai_auth", toml_edit::value(false));
+    provider_table.insert(
+        "requires_openai_auth",
+        toml_edit::value(show_official_account),
+    );
     Ok(doc.to_string())
+}
+
+/// 纯判定：官方额度查询结果是否允许恢复账户显示（任一窗口达 100% 即视为
+/// 耗尽——此时把标志提回 true 会让 App 在下次启动探查时锁死发送）。
+pub(crate) fn codex_quota_allows_account_display(quota: &SubscriptionQuota) -> bool {
+    quota.success
+        && matches!(quota.credential_status, CredentialStatus::Valid)
+        && !quota.tiers.is_empty()
+        && quota.tiers.iter().all(|tier| tier.utilization < 100.0)
+}
+
+/// 额度感知的账户显示提升（#7490 后续）：写入路径默认把 bearer 卡盖成
+/// false（安全态，不锁发送）。切换 / 接管完成后由命令层调用本函数：官方登录在盘且所有限额
+/// 窗口未达 100% 时，把 live 配置提升为 true——恢复桌面 App 左下角账户显示与官方
+/// token 自动刷新；额度可用时探查不会锁定会话。探测失败、非官方登录、官方卡或
+/// 网络异常时保持 false（发送永远可用）。
+pub async fn promote_codex_account_display_if_quota_available() {
+    use crate::services::subscription::query_codex_quota;
+
+    let run = async {
+        let config_text = read_codex_config_text()?;
+        // 只对带请求鉴权短路的第三方卡有意义；官方卡/中转卡原样返回
+        if !(config_text.contains("experimental_bearer_token") || config_text.contains("env_key")) {
+            return Ok::<bool, AppError>(false);
+        }
+        let auth: Value = read_json_file(&get_codex_auth_path())?;
+        if auth.get("auth_mode").and_then(|v| v.as_str()) != Some("chatgpt") {
+            return Ok::<bool, AppError>(false);
+        }
+        let Some(access_token) = auth
+            .pointer("/tokens/access_token")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+        else {
+            return Ok::<bool, AppError>(false);
+        };
+        let account_id = auth
+            .pointer("/tokens/account_id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|id| !id.is_empty());
+        let quota = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            query_codex_quota(
+                access_token,
+                account_id.as_deref(),
+                "codex_preserved_login",
+                "Preserved Codex login token expired",
+            ),
+        )
+        .await
+        .map_err(|e| AppError::Message(format!("quota probe timed out: {e}")))?
+        .map_err(|e| AppError::Message(format!("quota probe failed: {e}")))?;
+        if !codex_quota_allows_account_display(&quota) {
+            log::info!(
+                "[codex] 官方额度不可用或已耗尽，保持 requires_openai_auth = false（不显示账户状态）"
+            );
+            return Ok::<bool, AppError>(false);
+        }
+        let promoted =
+            align_codex_requires_openai_auth_with_login_preservation(&config_text, true)?;
+        if promoted == config_text {
+            return Ok::<bool, AppError>(false);
+        }
+        write_codex_live_config_atomic(Some(&promoted))?;
+        log::info!(
+            "[codex] 官方额度可用，已恢复 requires_openai_auth = true（账户显示 + token 刷新）"
+        );
+        Ok(true)
+    };
+    match run.await {
+        Ok(_) => {}
+        Err(e) => log::warn!("[codex] 账户显示提升跳过：{e}"),
+    }
 }
 
 fn set_codex_experimental_bearer_token(config_text: &str, token: &str) -> Result<String, AppError> {
@@ -3983,10 +4067,10 @@ fn plan_codex_live_write(
     // After injection, so the stamp sees the final credential shape. Only
     // this direct-switch plan stamps: the takeover subsystem preserves the
     // login unconditionally and keeps its existing config shapes.
-    let live_config = align_codex_requires_openai_auth_with_login_preservation(
-        &live_config,
-        preserve_official_login,
-    )?;
+    // Safe default (#7490): stamp false — sending always works; the
+    // quota-aware promotion step may flip it back to true afterwards.
+    let live_config =
+        align_codex_requires_openai_auth_with_login_preservation(&live_config, false)?;
 
     Ok(CodexLiveWritePlan {
         write_full_auth: false,
@@ -5996,6 +6080,59 @@ base_url = "https://bedrock.example/v1"
             on_flagless_text.contains("requires_openai_auth = false"),
             "preservation on must stamp flagless bearer cards to false; got:\n{on_flagless_text}"
         );
+    }
+
+    #[test]
+    fn align_respects_the_requested_account_display_polarity() {
+        // 安全态（写入路径/接管）传 false；额度可用后的提升步骤传 true
+        let bearer_true = "model_provider = \"relay\"
+
+[model_providers.relay]
+name = \"Relay\"
+base_url = \"https://relay.example/v1\"
+wire_api = \"responses\"
+experimental_bearer_token = \"sk-test\"
+requires_openai_auth = true
+";
+        let demoted = align_codex_requires_openai_auth_with_login_preservation(bearer_true, false)
+            .expect("align false");
+        assert!(demoted.contains("requires_openai_auth = false"));
+
+        let bearer_false = "model_provider = \"relay\"
+
+[model_providers.relay]
+name = \"Relay\"
+base_url = \"https://relay.example/v1\"
+wire_api = \"responses\"
+experimental_bearer_token = \"sk-test\"
+requires_openai_auth = false
+";
+        let promoted = align_codex_requires_openai_auth_with_login_preservation(bearer_false, true)
+            .expect("align true");
+        assert!(promoted.contains("requires_openai_auth = true"));
+    }
+
+    #[test]
+    fn codex_quota_allows_account_display_requires_headroom_in_every_window() {
+        let quota = |success: bool, utilization: f64| SubscriptionQuota {
+            tool: "codex_preserved_login".to_string(),
+            credential_status: CredentialStatus::Valid,
+            credential_message: None,
+            success,
+            tiers: vec![crate::services::subscription::QuotaTier {
+                name: "five_hour".to_string(),
+                utilization,
+                resets_at: None,
+                used_value_usd: None,
+                max_value_usd: None,
+            }],
+            extra_usage: None,
+            error: None,
+            queried_at: None,
+        };
+        assert!(codex_quota_allows_account_display(&quota(true, 42.0)));
+        assert!(!codex_quota_allows_account_display(&quota(true, 100.0)));
+        assert!(!codex_quota_allows_account_display(&quota(false, 42.0)));
     }
 
     #[test]

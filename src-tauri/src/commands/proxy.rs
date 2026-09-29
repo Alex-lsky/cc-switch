@@ -68,7 +68,14 @@ pub async fn set_proxy_takeover_for_app(
     state
         .proxy_service
         .set_takeover_for_app(&app_type, enabled)
-        .await
+        .await?;
+    // #7490 后续：接管写入后，官方登录在盘且额度未耗尽时恢复账户显示。
+    if enabled && app_type == "codex" {
+        tauri::async_runtime::spawn(async move {
+            crate::codex_config::promote_codex_account_display_if_quota_available().await;
+        });
+    }
+    Ok(())
 }
 
 /// 获取代理服务器状态

@@ -122,14 +122,23 @@ pub async fn switch_provider(
     id: String,
 ) -> Result<SwitchResult, String> {
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
-    tauri::async_runtime::spawn_blocking(move || {
+    let is_codex = matches!(app_type, AppType::Codex);
+    let result = tauri::async_runtime::spawn_blocking(move || {
         let state = app_handle
             .try_state::<AppState>()
             .ok_or_else(|| "应用状态不可用".to_string())?;
         switch_provider_internal(state.inner(), app_type, &id).map_err(|e| e.to_string())
     })
     .await
-    .map_err(|e| format!("供应商切换任务执行失败: {e}"))?
+    .map_err(|e| format!("供应商切换任务执行失败: {e}"))?;
+    // #7490 后续：写入路径默认把 bearer 卡盖成 false（保证发送可用）。
+    // 官方登录在盘且额度未耗尽时，后台恢复账户显示；探测异常不影响切换结果。
+    if is_codex && result.is_ok() {
+        tauri::async_runtime::spawn(async move {
+            crate::codex_config::promote_codex_account_display_if_quota_available().await;
+        });
+    }
+    result
 }
 
 fn import_default_config_internal(state: &AppState, app_type: AppType) -> Result<bool, AppError> {
