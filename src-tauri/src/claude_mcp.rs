@@ -4,7 +4,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::config::{atomic_write, get_claude_mcp_path};
+use crate::config::{atomic_write, get_claude_mcp_path, is_wsl_path};
 use crate::error::AppError;
 
 /// 需要在 Windows 上用 cmd /c 包装的命令
