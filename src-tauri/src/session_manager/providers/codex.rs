@@ -12,10 +12,6 @@ use serde_json::Value;
 
 use crate::codex_config::{get_codex_config_dir, read_codex_config_text};
 use crate::codex_state_db::{codex_state_db_is_lockable, codex_state_db_paths};
-use crate::session_manager::model::{
-    project_content, ContentRef, EventKind, ImageRef, MessageMeta, SessionBlock, ToolKind,
-    ToolStatus,
-};
 use crate::session_manager::{SessionMessage, SessionMeta};
 
 use super::utils::{
