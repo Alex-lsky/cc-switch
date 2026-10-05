@@ -5,6 +5,25 @@ All notable changes to CC Switch will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Pro 3.20.8] - 2026-10-05
+
+### Changed
+
+- Integrate 14 backend fixes from upstream v4.0.x that apply cleanly to the v3.20.x architecture; six further upstream fixes depend on the v4.0 rewrite (Stack mode, key-field engine, rebuilt tray/session manager) and were skipped.
+
+### Fixed
+
+- Codex official model support: raise the OAuth client identity to 0.159.0 for GPT-6.1 Sol (#7806) and add its pricing seed.
+- MCP sync: stop writing `type` into Codex mcp_servers (#7735), write url-only Codex MCP specs as HTTP while keeping transport-only fields apart, and keep projecting the remaining servers when one fails.
+- WSL: skip Codex state DBs on WSL paths Windows cannot lock (9P has no byte-range locks, so history migration and session scans stalled), and share a drive-mapping `is_wsl_path` from config so mapped drives pointing into WSL are recognized everywhere.
+- Usage: stop parented Codex sync from deadlocking on a poisoned cache.
+- Sessions/usage: support the OpenCode V2 SQLite schema in the session manager and usage queries, sorting V2 messages by seq with mixed V1/V2 databases (#7755, #7765).
+- Proxy: preserve terminal web search output order (#6509).
+- Database: reclaim the whole freelist on incremental vacuum.
+- OpenCode: preserve provider fields during import and sync (#7577).
+
+See `docs/release-notes/v3.20.8-zh.md` for upgrade and download instructions.
+
 ## [Pro 3.20.7] - 2026-09-29
 
 ### Fixed
