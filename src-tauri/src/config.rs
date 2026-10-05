@@ -68,6 +68,11 @@ pub(crate) fn is_wsl_path(path: &Path) -> bool {
     }
 }
 
+#[cfg(not(windows))]
+pub(crate) fn is_wsl_path(_path: &Path) -> bool {
+    false
+}
+
 /// 获取 Claude Code 配置目录路径
 pub fn get_claude_config_dir() -> PathBuf {
     if let Some(custom) = crate::settings::get_claude_override_dir() {
