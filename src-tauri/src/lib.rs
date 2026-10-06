@@ -1397,6 +1397,8 @@ pub fn run() {
             commands::get_config_dir,
             commands::open_config_folder,
             commands::pick_directory,
+            commands::list_wsl_distros,
+            commands::wsl_default_user,
             commands::open_external,
             commands::get_init_error,
             commands::get_migration_result,

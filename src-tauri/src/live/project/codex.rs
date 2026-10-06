@@ -149,6 +149,11 @@ impl CodexProjection {
 
         let mut top: Vec<(String, TomlValue)> = ROW_TOP_FIELDS
             .iter()
+            // 新版 Codex CLI 已移除顶层 disable_response_storage（配置校验器报
+            // "unrecognized configuration setting ... is ignored"），写入无意义。
+            // 这里跳过不投影：floor 语义下不写即清，存量供应商配置在任意一次
+            // 切换后自愈（fork #7490 系列同款治理，openai/codex#2760）。
+            .filter(|key| **key != "disable_response_storage")
             .filter_map(|key| {
                 let value = doc.get(key)?.as_value()?.clone();
                 Some(((*key).to_string(), undecorated(value)))

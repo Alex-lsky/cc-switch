@@ -8816,3 +8816,113 @@ mod tests {
         );
     }
 }
+
+/// 把 Dos 设备反解产物（`;Z:<token>\< UNC 路径>`）还原为 UNC 路径。
+pub(crate) fn dos_device_target_to_unc(target: &str) -> Option<PathBuf> {
+    let idx = target.find("Redirector")?;
+    let rest = target[idx + "Redirector".len()..].strip_prefix('\\')?;
+    // rest = ";Z:<token>\<target path>"
+    let rest = rest.split_once(':')?.1;
+    // 跳过凭据/会话 token,取第一个反斜杠之后的部分
+    let rest = rest.split_once('\\')?.1;
+    if rest.is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(format!(r"\\{rest}")))
+}
+
+/// 把磁盘符路径(如 `Z:\home\user`)反解为 UNC 路径。
+/// 用于识别「映射盘符指向 WSL」的场景(仅 Windows;其他平台恒 None)。
+#[cfg(target_os = "windows")]
+pub(crate) fn resolve_drive_to_unc(drive: &str) -> Option<PathBuf> {
+    use windows_sys::Win32::Storage::FileSystem::QueryDosDeviceW;
+
+    let drive = drive.trim_end_matches('\\');
+    if drive.len() != 2 || !drive.ends_with(':') {
+        return None;
+    }
+    let wide: Vec<u16> = drive.encode_utf16().chain(std::iter::once(0)).collect();
+    let mut buf = [0u16; 2048];
+    // SAFETY: buf 是有效的输出缓冲区;QueryDosDeviceW 写入不超过 buf.len() 的 UTF-16
+    let len = unsafe { QueryDosDeviceW(wide.as_ptr(), buf.as_mut_ptr(), buf.len() as u32) };
+    if len == 0 {
+        return None;
+    }
+    let end = buf.iter().position(|&c| c == 0).unwrap_or(len as usize);
+    let target = String::from_utf16_lossy(&buf[..end]);
+    dos_device_target_to_unc(&target)
+}
+
+#[cfg(all(not(target_os = "windows"), test))]
+pub(crate) fn resolve_drive_to_unc(_drive: &str) -> Option<PathBuf> {
+    None
+}
+
+/// 列出已安装的 WSL 发行版(`wsl.exe -l -q`,静默失败返回空列表)。
+/// 用于设置页把配置目录一键指向 WSL 内路径(`\wsl$\<distro>\...`)。
+#[tauri::command]
+pub async fn list_wsl_distros() -> Vec<String> {
+    tokio::task::spawn_blocking(list_wsl_distros_impl)
+        .await
+        .unwrap_or_default()
+}
+
+#[cfg(target_os = "windows")]
+fn list_wsl_distros_impl() -> Vec<String> {
+    let Ok(output) = std::process::Command::new("wsl.exe")
+        .args(["-l", "-q"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+    else {
+        return Vec::new();
+    };
+    if !output.status.success() {
+        return Vec::new();
+    }
+    decode_command_output(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .filter(|line| {
+            !line.contains("没有适用实例") && !line.to_lowercase().contains("no installed")
+        })
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn list_wsl_distros_impl() -> Vec<String> {
+    Vec::new()
+}
+
+/// 获取 WSL 发行版的默认用户名(`wsl.exe -d <distro> -- whoami`)。
+/// 失败返回空字符串;仅用于生成 `\wsl$\<distro>\home\<user>` 建议路径。
+#[tauri::command]
+pub async fn wsl_default_user(distro: String) -> String {
+    tokio::task::spawn_blocking(move || wsl_default_user_impl(&distro))
+        .await
+        .unwrap_or_default()
+}
+
+#[cfg(target_os = "windows")]
+fn wsl_default_user_impl(distro: &str) -> String {
+    if !is_valid_wsl_distro_name(distro) {
+        return String::new();
+    }
+    let Ok(output) = std::process::Command::new("wsl.exe")
+        .args(["-d", distro, "--", "/bin/sh", "-c", "whoami"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+    else {
+        return String::new();
+    };
+    if !output.status.success() {
+        return String::new();
+    }
+    decode_command_output(&output.stdout).trim().to_string()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn wsl_default_user_impl(_distro: &str) -> String {
+    String::new()
+}
