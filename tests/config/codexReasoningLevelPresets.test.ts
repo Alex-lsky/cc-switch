@@ -119,8 +119,6 @@ describe("Codex preset pre-filled reasoning levels", () => {
     ["SiliconFlow en", "MiniMaxAI/MiniMax-M3", ["none", "high"]],
     // SiliconFlow .cn：平台仅 high/max，显式 high 与预设配置一致。
     ["SiliconFlow", "deepseek-ai/DeepSeek-V4-Flash", ["high", "max"], "high"],
-    // 聚合平台尚未确认新 GLM 的开关/effort；单档不下发推理控制参数。
-    ["AtlasCloud", "zai-org/glm-5.2", ["high"]],
     ["Novita AI", "zai-org/glm-5.3", ["high"]],
     // NIM K3 的官方枚举；显式 high 与预设配置一致。
     ["Nvidia", "moonshotai/kimi-k3", ["low", "high", "max"], "high"],

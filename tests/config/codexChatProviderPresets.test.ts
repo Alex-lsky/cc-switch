@@ -84,13 +84,6 @@ const expectedChatPresets = new Map<
     },
   ],
   [
-    "AtlasCloud",
-    {
-      baseUrl: "https://api.atlascloud.ai/v1",
-      contextWindows: { "zai-org/glm-5.2": 1048576 },
-    },
-  ],
-  [
     "Novita AI",
     {
       baseUrl: "https://api.novita.ai/openai/v1",

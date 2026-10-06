@@ -126,7 +126,7 @@ interface GoldenCase {
 
 const CLAUDE_CASES: GoldenCase[] = [
   { preset: "Claude Official", fillApiKey: false },
-  { preset: "RelaxyCode", fillApiKey: true },
+  { preset: "DeepSeek", fillApiKey: true },
   {
     preset: "AWS Bedrock (API Key)",
     fillApiKey: true,
@@ -134,14 +134,14 @@ const CLAUDE_CASES: GoldenCase[] = [
   },
   { preset: "Nvidia", fillApiKey: true },
   { preset: "Kimi For Coding", fillApiKey: true },
-  { preset: "E-FlowCode", fillApiKey: true },
+  { preset: "Zhipu GLM", fillApiKey: true },
 ];
 
 const CODEX_CASES: GoldenCase[] = [
   { preset: "OpenAI Official", fillApiKey: false },
   { preset: "xAI (Grok)", fillApiKey: true },
   { preset: "Nvidia", fillApiKey: true },
-  { preset: "E-FlowCode", fillApiKey: true },
+  { preset: "Kimi", fillApiKey: true },
 ];
 
 const API_KEY_INPUT_ID: Record<GoldenAppId, string> = {

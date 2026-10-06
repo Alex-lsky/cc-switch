@@ -170,8 +170,9 @@ describe("新增对话框的草稿投影", () => {
     renderForm("gemini", bases);
     await nextBase(bases, 0);
 
+    // 无 nameKey 的预设按原始名渲染，测试才能按名点击
     const preset = geminiProviderPresets.find(
-      (item) => item.category !== "official",
+      (item) => item.category !== "official" && !item.nameKey,
     )!;
     let seen = bases.length;
     clickPreset(preset.name);

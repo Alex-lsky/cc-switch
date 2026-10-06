@@ -36,13 +36,9 @@ describe("mcodeProviderPresets", () => {
   });
 
   it("keeps dialect presets, relying on compat instead of effort options", () => {
-    const deepseek = Object.values(mcodePreset("PPIO")!.settingsConfig.models);
-    expect(deepseek[0].compat).toMatchObject({
-      thinkingFormat: "deepseek",
-      requiresReasoningContentOnAssistantMessages: true,
-    });
-    expect(deepseek[0]).not.toHaveProperty("thinking");
-
+    // fork 中立化移除了 PPIO（deepseek 方言样本）；千问AI平台（官方 Bailian
+    // 改名）保留，仍是 qwen 方言的活样本。DeepSeek 系模型无方言 compat，
+    // 靠后端默认行为处理。
     const qwen =
       mcodePreset("千问AI平台")!.settingsConfig.models["qwen3.8-max"];
     expect(qwen.compat).toEqual({

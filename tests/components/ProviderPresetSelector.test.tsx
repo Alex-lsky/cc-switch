@@ -226,11 +226,11 @@ describe("preset families", () => {
     expect(hits("moonshot")).toEqual([["family:kimi", []]]);
   });
 
-  it("merges Claude's visible presets into 73 rows", () => {
+  it("merges Claude's visible presets into 30 rows after the fork's sponsor neutralization", () => {
     const claudeEntries = providerPresets
       .filter((item) => !item.hidden)
       .map((item, index) => ({ id: `claude-${index}`, preset: item }));
-    expect(groupPresetRows(claudeEntries)).toHaveLength(73);
+    expect(groupPresetRows(claudeEntries)).toHaveLength(30);
   });
 
   it("orders plans and regions as the design does where a family says so", () => {
@@ -300,11 +300,6 @@ describe("preset families", () => {
     expect(layoutOf(claude, "zhipu")).toEqual({
       kind: "single",
       dimension: "region",
-    });
-    // 两维都没写：用域名区分
-    expect(layoutOf(claude, "sudocode")).toEqual({
-      kind: "single",
-      dimension: null,
     });
     expect(presetVersionLayout(tencentPartial)).toEqual({ kind: "list" });
   });

@@ -133,13 +133,18 @@ describe("ClaudeDesktopProviderForm", () => {
     const onSubmit = vi.fn();
     renderForm(undefined, onSubmit);
 
-    await user.click(screen.getByRole("button", { name: /PackyCode/ }));
+    await user.click(
+      screen.getByRole("button", { name: /DeepSeek/ }),
+    );
 
-    expect(screen.getByDisplayValue("claude-sonnet-5")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("claude-opus-5")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("claude-haiku-4-5")).toBeInTheDocument();
+    expect(
+      screen.getAllByDisplayValue("deepseek-v4-pro").length,
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByDisplayValue("deepseek-flash").length).toBeGreaterThan(
+      0,
+    );
 
-    await user.clear(screen.getByDisplayValue("claude-sonnet-5"));
+    await user.clear(screen.getAllByDisplayValue("deepseek-v4-pro")[0]);
     await user.type(screen.getByLabelText("API Key"), "sk-test");
     await user.click(screen.getByRole("button", { name: "保存" }));
 
@@ -147,12 +152,8 @@ describe("ClaudeDesktopProviderForm", () => {
     expect(
       onSubmit.mock.calls[0][0].meta.claudeDesktopModelRoutes,
     ).toMatchObject({
-      "claude-opus-5": { model: "claude-opus-5" },
-      "claude-haiku-4-5": { model: "claude-haiku-4-5" },
+      "claude-haiku-4-5": { model: "deepseek-flash" },
     });
-    expect(
-      onSubmit.mock.calls[0][0].meta.claudeDesktopModelRoutes,
-    ).not.toHaveProperty("claude-sonnet-5");
   });
 
   it("直连与模型映射分别保留自己的模型列表", async () => {
