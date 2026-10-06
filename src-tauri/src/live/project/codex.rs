@@ -74,18 +74,9 @@ pub enum RouteAuth {
     None,
 }
 
-/// 第三方路由表的 `requires_openai_auth`。
-///
-/// Codex 0.149 上这个值不决定请求用什么凭据（`env_key`、`experimental_bearer_token`
-/// 优先），但决定登录界面：为 `true` 而 `auth.json` 里没有登录，Codex 会卡在登录页；为
-/// `false` 而旁边留着 ChatGPT 登录，Codex 当成已登出（账号信息不显示、token 不刷新）。
-/// 所以只有凭据走自己的通道（Bearer、EnvKey）时才跟着「写完后盘上有没有登录」走；
-/// Headers、None 恒为 `false`，否则请求会回退去读 `auth.json` 里的官方登录，把它发给
-/// 第三方地址。官方镜像形态（统一会话历史、代理的官方路由）恒为 `true`，不经过这里。
-pub fn requires_openai_auth(auth: RouteAuth, login_on_disk: bool) -> bool {
-    matches!(auth, RouteAuth::EnvKey | RouteAuth::Bearer) && login_on_disk
-}
-
+/// 第三方路由表的 `requires_openai_auth` 恒为 `false`（fork #7490）：bearer /
+/// env_key 卡的请求凭据走自己通道，`true` 只会触发官方用量检查并在额度耗尽时
+/// 锁死发送；账户显示由切换后的额度探测提升按需恢复。官方镜像形态不经这里。
 /// 行要求 Codex 走哪条路由。
 #[derive(Debug, Clone)]
 pub enum Route {
@@ -982,26 +973,6 @@ mod tests {
     }
 
     const RELAY: &str = "model_provider = \"relay\"\nmodel = \"gpt-5\"\n\n[model_providers.relay]\nname = \"Relay\"\nbase_url = \"https://relay.example/v1\"\nwire_api = \"responses\"\nrequires_openai_auth = true\n";
-
-    #[test]
-    fn requires_openai_auth_follows_the_login_only_for_own_credentials() {
-        for (auth, login, expected) in [
-            (RouteAuth::Bearer, true, true),
-            (RouteAuth::Bearer, false, false),
-            (RouteAuth::EnvKey, true, true),
-            (RouteAuth::EnvKey, false, false),
-            (RouteAuth::Headers, true, false),
-            (RouteAuth::Headers, false, false),
-            (RouteAuth::None, true, false),
-            (RouteAuth::None, false, false),
-        ] {
-            assert_eq!(
-                requires_openai_auth(auth, login),
-                expected,
-                "{auth:?} {login}"
-            );
-        }
-    }
 
     #[test]
     fn a_third_party_row_is_normalized_into_the_custom_route_with_its_key() {

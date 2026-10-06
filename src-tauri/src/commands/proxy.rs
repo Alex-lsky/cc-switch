@@ -63,6 +63,7 @@ pub async fn get_proxy_takeover_status(
 /// 两者都不看。
 #[tauri::command]
 pub async fn set_proxy_takeover_for_app(
+    app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     app_type: String,
     enabled: bool,
@@ -77,7 +78,16 @@ pub async fn set_proxy_takeover_for_app(
             stack.unwrap_or(false),
             route.as_deref(),
         )
-        .await
+        .await?;
+        // fork #7490 后续：接管写入后，官方登录在盘且额度未耗尽时恢复账户显示。
+        if app.as_str() == "codex" {
+            tauri::async_runtime::spawn(async move {
+                let fresh =
+                    super::codex_oauth::resolve_preserved_login_probe_credential(&app_handle).await;
+                crate::codex_config::promote_codex_account_display_if_quota_available(fresh).await;
+            });
+        }
+        Ok(())
     } else {
         crate::mode::controller::exit(state.inner(), &app).await
     }

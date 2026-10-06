@@ -7,6 +7,7 @@ use crate::config::{
 };
 use crate::error::AppError;
 use crate::model_capabilities::{image_input_capability_from_modalities, ImageInputCapability};
+use crate::services::subscription::{CredentialStatus, SubscriptionQuota};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
@@ -298,7 +299,7 @@ pub(crate) fn codex_managed_oauth_live_auth_marker_exists() -> bool {
 /// 托管账号写入的完整 bundle 会额外带 `tokens.refresh_token` 与顶层 `last_refresh`，
 /// 这里一并容忍。Codex CLI 自刷新会轮换 access_token，因此短期 token 指纹不能
 /// 作为稳定的所有权谓词；cc-switch 的本地账号 ID 单独记录在 marker 中。
-fn extract_codex_managed_oauth_account_id(auth: &Value) -> Option<String> {
+pub(crate) fn extract_codex_managed_oauth_account_id(auth: &Value) -> Option<String> {
     let auth_obj = auth.as_object()?;
 
     if auth_obj.keys().any(|key| {
@@ -5525,5 +5526,115 @@ model_catalog_json = "cc-switch-model-catalog.json"
             result.is_err(),
             "file larger than MAX_CODEX_CATALOG_BYTES must be rejected"
         );
+    }
+}
+
+/// 纯判定：官方额度查询结果是否允许恢复账户显示（任一窗口达 100% 即视为
+/// 耗尽——此时把标志提回 true 会让 App 在下次启动探查时锁死发送）。
+pub(crate) fn codex_quota_allows_account_display(quota: &SubscriptionQuota) -> bool {
+    quota.success
+        && matches!(quota.credential_status, CredentialStatus::Valid)
+        && !quota.tiers.is_empty()
+        && quota.tiers.iter().all(|tier| tier.utilization < 100.0)
+}
+
+/// 提升探测用的官方登录凭据：由命令层从认证中心管理器解析（必要时自动
+/// 刷新），避免盘上 access_token 在 false 期过期后卡住探测。
+pub struct CodexProbeCredential {
+    pub access_token: String,
+    pub chatgpt_account_id: Option<String>,
+}
+
+/// 额度感知的账户显示提升（fork #7490 后续）：写入路径默认把 bearer 卡盖成
+/// false（安全态，不锁发送）。切换 / 接管完成后由命令层调用本函数：官方登录
+/// 在盘且所有限额窗口未达 100% 时，把 live 路由表的标志提回 true——恢复桌面
+/// App 左下角账户显示与官方 token 自动刷新；额度可用时探查不会锁定会话。
+/// 探测失败、非官方登录、官方卡或网络异常时保持 false（发送永远可用）。
+pub async fn promote_codex_account_display_if_quota_available(fresh: Option<CodexProbeCredential>) {
+    use crate::services::subscription::query_codex_quota;
+
+    let run = async {
+        let config_text = read_codex_config_text()?;
+        // 只对带请求鉴权短路的第三方卡有意义；官方卡/中转卡原样返回
+        if !(config_text.contains("experimental_bearer_token") || config_text.contains("env_key")) {
+            return Ok::<bool, AppError>(false);
+        }
+        let auth: Value = crate::config::read_json_file(&get_codex_auth_path())?;
+        if auth.get("auth_mode").and_then(|v| v.as_str()) != Some("chatgpt") {
+            return Ok::<bool, AppError>(false);
+        }
+        let (access_token, account_id) =
+            if let Some(fresh) = fresh.filter(|c| !c.access_token.trim().is_empty()) {
+                (fresh.access_token, fresh.chatgpt_account_id)
+            } else {
+                let Some(access_token) = auth
+                    .pointer("/tokens/access_token")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|t| !t.is_empty())
+                else {
+                    return Ok::<bool, AppError>(false);
+                };
+                let account_id = auth
+                    .pointer("/tokens/account_id")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|id| !id.is_empty());
+                (access_token.to_string(), account_id.map(str::to_string))
+            };
+        let quota = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            query_codex_quota(
+                &access_token,
+                account_id.as_deref(),
+                "codex_preserved_login",
+                "Preserved Codex login token expired",
+            ),
+        )
+        .await
+        .map_err(|e| AppError::Message(format!("quota probe timed out: {e}")))?
+        .map_err(|e| AppError::Message(format!("quota probe failed: {e}")))?;
+        if !codex_quota_allows_account_display(&quota) {
+            log::info!(
+                "[codex] 官方额度不可用或已耗尽，保持 requires_openai_auth = false（不显示账户状态）"
+            );
+            return Ok(false);
+        }
+        // 把 live 路由表的标志提回 true：toml_edit 文档模型保注释与键序
+        let mut doc = config_text
+            .parse::<DocumentMut>()
+            .map_err(|e| AppError::Message(format!("Invalid Codex config.toml: {e}")))?;
+        let flipped = doc
+            .get_mut("model_providers")
+            .and_then(|item| item.as_table_like_mut())
+            .and_then(|table| table.get_mut("custom"))
+            .and_then(|item| item.as_table_like_mut())
+            .and_then(|table| {
+                table
+                    .get("requires_openai_auth")
+                    .and_then(|item| item.as_bool())
+                    .map(|current| (table, current))
+            })
+            .map(|(table, current)| {
+                if current {
+                    false
+                } else {
+                    table.insert("requires_openai_auth", toml_edit::value(true));
+                    true
+                }
+            })
+            .unwrap_or(false);
+        if !flipped {
+            return Ok(false);
+        }
+        crate::config::write_text_file(&get_codex_config_path(), &doc.to_string())?;
+        log::info!(
+            "[codex] 官方额度可用，已恢复 requires_openai_auth = true（账户显示 + token 刷新）"
+        );
+        Ok(true)
+    };
+    match run.await {
+        Ok(_) => {}
+        Err(e) => log::warn!("[codex] 账户显示提升跳过：{e}"),
     }
 }

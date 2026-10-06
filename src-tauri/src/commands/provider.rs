@@ -166,6 +166,7 @@ pub async fn switch_provider(
 ) -> Result<SwitchResult, String> {
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
     let is_desktop = matches!(app_type, AppType::ClaudeDesktop);
+    let is_codex = matches!(app_type, AppType::Codex);
     let desktop_was_mapping = is_desktop
         && app_handle.try_state::<AppState>().is_some_and(|state| {
             crate::claude_desktop_config::current_provider_uses_proxy(&state.db)
@@ -187,6 +188,15 @@ pub async fn switch_provider(
             )
             .await;
         }
+    }
+    // fork #7490 后续：写入路径默认把 bearer 卡盖成 false（保证发送可用）。
+    // 官方登录在盘且额度未耗尽时，后台恢复账户显示；探测异常不影响切换结果。
+    if is_codex {
+        tauri::async_runtime::spawn(async move {
+            let fresh =
+                super::codex_oauth::resolve_preserved_login_probe_credential(&app_handle).await;
+            crate::codex_config::promote_codex_account_display_if_quota_available(fresh).await;
+        });
     }
     Ok(result)
 }

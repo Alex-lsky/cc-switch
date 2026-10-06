@@ -3571,18 +3571,25 @@ model_provider = "c"
 
     #[tokio::test]
     #[serial]
-    async fn codex_keyring_logins_keep_requires_openai_auth_on_the_preservation_setting() {
+    async fn codex_keyring_logins_stamp_the_bearer_card_false_regardless_of_preservation() {
+        // fork #7490：bearer 卡的 requires_openai_auth 恒为 false——keyring 登录
+        // 在盘与否不再影响它（true 只会触发官方用量检查，额度耗尽时锁死发送）。
+        // 账户显示由切换后的额度探测提升按需恢复。
         let _home = Home::new();
         for preserve in [true, false] {
             set_preservation(preserve);
-            seed_codex("cli_auth_credentials_store = \"keyring\"\n", None);
+            seed_codex(
+                "cli_auth_credentials_store = \"keyring\"
+",
+                None,
+            );
             let state = state_with(AppType::Codex, &codex_a_b(), "a").await;
             ProviderService::switch(&state, AppType::Codex, "b").expect("to b");
             let doc = codex_doc();
             assert_eq!(
                 doc["model_providers"]["custom"]["requires_openai_auth"].as_bool(),
-                Some(preserve),
-                "the login lives in the keyring, auth.json says nothing (preserve={preserve})"
+                Some(false),
+                "bearer cards always stamp false (preserve={preserve})"
             );
             assert_eq!(doc["cli_auth_credentials_store"].as_str(), Some("keyring"));
         }

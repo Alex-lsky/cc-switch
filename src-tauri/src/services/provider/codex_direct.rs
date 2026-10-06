@@ -35,9 +35,9 @@ use crate::live::engine::{digest, read_current, DeviceStore, LiveFile};
 use crate::live::patch::toml::{value_text, TomlDocPatch, TomlSteps};
 use crate::live::patch::{Guarded, LivePatch, WholeFile};
 use crate::live::project::codex::{
-    official_mirror_table, proxy_route_table, requires_openai_auth, row_catalog_pointer,
-    CodexConfigPatch, CodexProjection, KnownTable, Route, RouteAuth, RouteWrite, RowInput,
-    ROUTE_ID, WEB_SEARCH_DISABLED,
+    official_mirror_table, proxy_route_table, row_catalog_pointer, CodexConfigPatch,
+    CodexProjection, KnownTable, Route, RouteAuth, RouteWrite, RowInput, ROUTE_ID,
+    WEB_SEARCH_DISABLED,
 };
 use crate::mode::contract::CONTRACT_VERSION;
 use crate::mode::operation::{AppWrite, FileChange, OperationReport};
@@ -959,7 +959,6 @@ pub(crate) fn run_with_edits(
         pre: stash_pre,
         unreadable: stash_unreadable,
     } = load_stash(store, &planned.official_logins);
-    let preserve = crate::settings::preserve_codex_official_auth_on_switch();
     let auth_plan = codex_login::plan(AuthInput {
         live: live_auth.as_ref(),
         live_is_managed,
@@ -1008,23 +1007,15 @@ pub(crate) fn run_with_edits(
         ));
     }
 
-    // Codex 把登录存在哪由 `cli_auth_credentials_store` 决定：只存 auth.json 时看它；
-    // 存在系统钥匙串（keyring、auto）或认不出时看不到登录，直连按保留登录开关、代理按
-    // 「登录不动」处理；ephemeral 从不落盘，当成没登录。
-    let login = match codex_config_auth_store_mode(&config_text) {
-        CodexAuthStoreMode::File => auth_plan.login_on_disk,
-        CodexAuthStoreMode::Ephemeral => false,
-        CodexAuthStoreMode::Keyring | CodexAuthStoreMode::Auto | CodexAuthStoreMode::Unknown => {
-            !matches!(planned.auth, AuthGoal::ThirdParty) || preserve
-        }
-    };
+    // #7490（fork）：带自有凭据通道（bearer / env_key）的第三方卡一律把
+    // `requires_openai_auth` 盖成 `false`。该标志不决定请求凭据，但 `true` 会让
+    // Codex 把会话当官方 ChatGPT 登录、在启动/会话开始时跑官方用量检查——官方
+    // 额度一耗尽就锁死发送。官方账户显示由切换完成后的额度探测提升步骤恢复
+    // （见 commands 层的 promote 流程）：窗口未满时才提回 `true`，此时不会锁。
     let mut config = planned.config;
     if let (Some(kind), RouteWrite::Custom(table)) = (planned.stamp, &mut config.route) {
         if matches!(kind, RouteAuth::Bearer | RouteAuth::EnvKey) {
-            table.insert(
-                "requires_openai_auth",
-                toml_edit::value(requires_openai_auth(kind, login)),
-            );
+            table.insert("requires_openai_auth", toml_edit::value(false));
         }
     }
 
