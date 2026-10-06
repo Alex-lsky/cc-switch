@@ -25,6 +25,7 @@ export interface PresetTheme {
 
 export interface ProviderPreset extends PresetFamilyFields {
   name: string;
+  pinned?: boolean; // 本地内置渠道，置顶显示
   nameKey?: string; // i18n key for localized display name
   websiteUrl: string;
   // 新增：第三方/聚合等可单独配置获取 API Key 的链接
@@ -75,6 +76,20 @@ export interface ProviderPreset extends PresetFamilyFields {
 }
 
 export const providerPresets: ProviderPreset[] = [
+  {
+    name: "Me-zai",
+    websiteUrl: "https://api.mezai.uk",
+    settingsConfig: {
+      env: {
+        ANTHROPIC_BASE_URL: "https://api.mezai.uk",
+        ANTHROPIC_AUTH_TOKEN: "",
+      },
+    },
+    category: "third_party",
+    pinned: true,
+    icon: "mezai",
+    iconColor: "#6366F1",
+  },
   {
     name: "Claude Official",
     websiteUrl: "https://www.anthropic.com/claude-code",

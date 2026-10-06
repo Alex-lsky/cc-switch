@@ -22,6 +22,7 @@ export interface OpenClawSuggestedDefaults {
 
 export interface OpenClawProviderPreset extends PresetFamilyFields {
   name: string;
+  pinned?: boolean; // 本地内置渠道，置顶显示
   nameKey?: string; // i18n key for localized display name
   websiteUrl: string;
   apiKeyUrl?: string;
@@ -102,6 +103,54 @@ export const openclawApiProtocols = [
  * OpenClaw provider presets list
  */
 export const openclawProviderPresets: OpenClawProviderPreset[] = [
+  {
+    name: "Me-zai",
+    websiteUrl: "https://api.mezai.uk",
+    settingsConfig: {
+      baseUrl: "https://api.mezai.uk/v1",
+      apiKey: "",
+      api: "openai-completions",
+      models: [
+        { id: "gpt-5.6-terra", name: "GPT-5.6 Terra", contextWindow: 272000 },
+        { id: "kimi-k3", name: "Kimi K3", contextWindow: 1000000 },
+        {
+          id: "Gemini 3.8 Flash",
+          name: "Gemini 3.8 Flash",
+          contextWindow: 1000000,
+        },
+        {
+          id: "muse-spark-1.3-contributor",
+          name: "Muse Spark 1.3 Contributor",
+          contextWindow: 1000000,
+        },
+        { id: "gpt-6-astra", name: "GPT-6 Astra", contextWindow: 1000000 },
+        {
+          id: "deepseek-v4.1-flash",
+          name: "DeepSeek V4.1 Flash",
+          contextWindow: 1000000,
+        },
+        { id: "glm-5.3-flash", name: "GLM-5.3 Flash", contextWindow: 1000000 },
+        { id: "glm-5.3", name: "GLM-5.3", contextWindow: 1000000 },
+        {
+          id: "mimo-v2.6-flash",
+          name: "MiMo v2.6 Flash",
+          contextWindow: 1000000,
+        },
+        { id: "mimo-v2.6-pro", name: "MiMo v2.6 Pro", contextWindow: 1000000 },
+        {
+          id: "mimo-v2.6-pro-ultraspeed",
+          name: "MiMo v2.6 Pro Ultraspeed",
+          contextWindow: 1000000,
+        },
+        { id: "gpt-6-sol", name: "GPT-6 Sol", contextWindow: 1000000 },
+        { id: "gpt-6-luna", name: "GPT-6 Luna", contextWindow: 1000000 },
+      ],
+    },
+    category: "third_party",
+    pinned: true,
+    icon: "mezai",
+    iconColor: "#6366F1",
+  },
   // ===== 赞助商预设：文件顺序与 README 赞助商表对齐（仅维护约定；应用内一律按显示名排序，不置顶）=====
   {
     name: "Kimi",

@@ -28,6 +28,7 @@ import type { PresetFamilyFields } from "./presetFamilies";
 
 export interface GrokBuildProviderPreset extends PresetFamilyFields {
   name: string;
+  pinned?: boolean; // 本地内置渠道，置顶显示
   nameKey?: string; // i18n key for localized display name
   websiteUrl: string;
   apiKeyUrl?: string;
@@ -80,6 +81,18 @@ requires_openai_auth = true`;
 }
 
 export const grokBuildProviderPresets: GrokBuildProviderPreset[] = [
+  {
+    name: "Me-zai",
+    websiteUrl: "https://api.mezai.uk",
+    auth: grokAuth(),
+    config: grokPresetConfig("Me-zai", "https://api.mezai.uk/v1", "grok-4.5"),
+    endpointCandidates: ["https://api.mezai.uk/v1"],
+    apiFormat: "openai_responses",
+    category: "third_party",
+    pinned: true,
+    icon: "mezai",
+    iconColor: "#6366F1",
+  },
   // ===== 赞助商预设：文件顺序与 README 赞助商表对齐（仅维护约定；应用内一律按显示名排序，不置顶）=====
   {
     name: "Qiniu",

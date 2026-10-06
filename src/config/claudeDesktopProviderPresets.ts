@@ -43,6 +43,7 @@ export type ClaudeDesktopRoleId = keyof typeof CLAUDE_DESKTOP_ROLE_ROUTE_IDS;
 
 export interface ClaudeDesktopProviderPreset extends PresetFamilyFields {
   name: string;
+  pinned?: boolean; // 本地内置渠道，置顶显示
   nameKey?: string;
   websiteUrl: string;
   apiKeyUrl?: string;
@@ -139,6 +140,18 @@ const brandedRoutes = (
 };
 
 export const claudeDesktopProviderPresets: ClaudeDesktopProviderPreset[] = [
+  {
+    name: "Me-zai",
+    websiteUrl: "https://api.mezai.uk",
+    category: "third_party",
+    pinned: true,
+    baseUrl: "https://api.mezai.uk",
+    mode: "proxy",
+    apiFormat: "anthropic",
+    modelRoutes: brandedRoutes("gpt-6-sol", "gpt-6-sol", "gpt-6-sol"),
+    icon: "mezai",
+    iconColor: "#6366F1",
+  },
   {
     name: "Claude Desktop Official",
     websiteUrl: "https://claude.ai/download",

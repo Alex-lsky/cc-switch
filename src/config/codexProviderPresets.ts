@@ -18,6 +18,7 @@ const MIMO_CODEX_BASE_INSTRUCTIONS =
 
 export interface CodexProviderPreset extends PresetFamilyFields {
   name: string;
+  pinned?: boolean; // 本地内置渠道，置顶显示
   nameKey?: string; // i18n key for localized display name
   websiteUrl: string;
   // 第三方供应商可提供单独的获取 API Key 链接
@@ -72,14 +73,17 @@ export function generateThirdPartyConfig(
     // requires_openai_auth = true 会被后端 keyless 安全闸拒绝切换
     // （provider.codex.config.official_auth_fallback）。
     requiresOpenAiAuth?: boolean;
+    // 预设可按厂商目录声明默认推理档；不传保持通用默认 high
+    reasoningEffort?: string;
   },
 ): string {
+  const reasoningEffort = options?.reasoningEffort ?? "high";
   const tomlString = (value: string) => JSON.stringify(value);
   const requiresOpenAiAuth = options?.requiresOpenAiAuth ?? true;
 
   return `model_provider = "custom"
 model = ${tomlString(modelName)}
-model_reasoning_effort = "high"
+model_reasoning_effort = ${tomlString(reasoningEffort)}
 
 [model_providers.custom]
 name = ${tomlString(providerName)}
@@ -130,6 +134,121 @@ function modelCatalog(
 }
 
 export const codexProviderPresets: CodexProviderPreset[] = [
+  {
+    name: "Me-zai",
+    websiteUrl: "https://api.mezai.uk",
+    auth: generateThirdPartyAuth(""),
+    config: generateThirdPartyConfig(
+      "Me-zai",
+      "https://api.mezai.uk/v1",
+      "gpt-6-sol",
+      // 本机现行配置：默认模型 gpt-6-sol + xhigh 推理档
+      { reasoningEffort: "xhigh" },
+    ),
+    endpointCandidates: ["https://api.mezai.uk/v1"],
+    // Me-zai 上游为 new-api 统一中转：原生 /v1/responses 直通（ChatGPT/Codex
+    // 协议），模型目录与生产环境一致；gpt-5.5/5.6 系列按 ChatGPT 后端能力
+    // 声明 xhigh，1M 上下文模型按中转实际配置。
+    apiFormat: "openai_responses",
+    modelCatalog: modelCatalog([
+      {
+        model: "gpt-6-sol",
+        displayName: "GPT-6 Sol",
+        contextWindow: 1000000,
+        reasoningLevels: ["low", "medium", "high", "xhigh", "ultra"],
+        defaultReasoningLevel: "high",
+      },
+      {
+        model: "gpt-5.6-terra",
+        displayName: "GPT-5.6 Terra",
+        contextWindow: 272000,
+        reasoningLevels: ["low", "medium", "high", "xhigh"],
+        defaultReasoningLevel: "medium",
+      },
+      {
+        model: "kimi-k3",
+        displayName: "Kimi K3",
+        contextWindow: 1000000,
+        reasoningLevels: ["low", "medium", "high"],
+        defaultReasoningLevel: "medium",
+      },
+      {
+        model: "Gemini 3.8 Flash",
+        displayName: "Gemini 3.8 Flash",
+        contextWindow: 1000000,
+        reasoningLevels: ["low", "medium", "high", "xhigh"],
+        defaultReasoningLevel: "high",
+      },
+      {
+        model: "muse-spark-1.3-contributor",
+        displayName: "Muse Spark 1.3 Contributor",
+        contextWindow: 1000000,
+        reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
+        defaultReasoningLevel: "high",
+      },
+      {
+        model: "gpt-6-astra",
+        displayName: "GPT-6 Astra",
+        contextWindow: 1000000,
+        reasoningLevels: ["low", "medium", "high", "xhigh", "ultra"],
+        defaultReasoningLevel: "high",
+      },
+      {
+        model: "deepseek-v4.1-flash",
+        displayName: "DeepSeek V4.1 Flash",
+        contextWindow: 1000000,
+        reasoningLevels: ["medium", "high", "xhigh", "max"],
+        defaultReasoningLevel: "high",
+      },
+      {
+        model: "glm-5.3-flash",
+        displayName: "GLM-5.3 Flash",
+        contextWindow: 1000000,
+        reasoningLevels: ["medium", "high", "xhigh", "max"],
+        defaultReasoningLevel: "high",
+      },
+      {
+        model: "glm-5.3",
+        displayName: "GLM-5.3",
+        contextWindow: 1000000,
+        inputModalities: ["text"],
+        reasoningLevels: ["medium", "high", "xhigh", "max"],
+        defaultReasoningLevel: "high",
+      },
+      {
+        model: "mimo-v2.6-flash",
+        displayName: "MiMo v2.6 Flash",
+        contextWindow: 1000000,
+        reasoningLevels: ["medium", "high", "xhigh", "max"],
+        defaultReasoningLevel: "high",
+      },
+      {
+        model: "mimo-v2.6-pro",
+        displayName: "MiMo v2.6 Pro",
+        contextWindow: 1000000,
+        reasoningLevels: ["medium", "high", "xhigh", "max"],
+        defaultReasoningLevel: "high",
+      },
+      {
+        model: "mimo-v2.6-pro-ultraspeed",
+        displayName: "MiMo v2.6 Pro Ultraspeed",
+        contextWindow: 1000000,
+        reasoningLevels: ["medium", "high", "xhigh", "max"],
+        defaultReasoningLevel: "high",
+      },
+      {
+        model: "gpt-6-luna",
+        displayName: "GPT-6 Luna",
+        contextWindow: 1000000,
+        reasoningLevels: ["low", "medium", "high", "xhigh"],
+        defaultReasoningLevel: "high",
+      },
+    ]),
+    category: "third_party",
+    pinned: true,
+    icon: "mezai",
+    iconColor: "#6366F1",
+  },
   {
     name: "OpenAI Official",
     websiteUrl: "https://chatgpt.com/codex",

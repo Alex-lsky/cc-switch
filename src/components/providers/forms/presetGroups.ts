@@ -408,14 +408,27 @@ export function sortPresetsByName(
   entries: PresetEntry[],
   t: Translate,
 ): PresetEntry[] {
-  return sortByName(entries, (entry) => presetDisplayName(entry.preset, t));
+  // 本地内置渠道（pinned）恒排最前，其余按显示名排序
+  const pinned = entries.filter((entry) => entry.preset.pinned);
+  const rest = entries.filter((entry) => !entry.preset.pinned);
+  return [
+    ...sortByName(pinned, (e) => presetDisplayName(e.preset, t)),
+    ...sortByName(rest, (e) => presetDisplayName(e.preset, t)),
+  ];
 }
 
 export function sortPresetRowsByName<T extends { row: PresetRowItem }>(
   items: T[],
   t: Translate,
 ): T[] {
-  return sortByName(items, (item) => presetRowName(item.row, t));
+  const isPinned = (item: T) =>
+    item.row.versions.some((entry) => entry.preset.pinned);
+  const pinned = items.filter(isPinned);
+  const rest = items.filter((item) => !isPinned(item));
+  return [
+    ...sortByName(pinned, (item) => presetRowName(item.row, t)),
+    ...sortByName(rest, (item) => presetRowName(item.row, t)),
+  ];
 }
 
 /** 预设需要经过路由才能用（托管 OAuth、要转换格式的） */

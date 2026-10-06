@@ -15,6 +15,7 @@ export interface GeminiPresetTheme {
 
 export interface GeminiProviderPreset extends PresetFamilyFields {
   name: string;
+  pinned?: boolean; // 本地内置渠道，置顶显示
   nameKey?: string; // i18n key for localized display name
   websiteUrl: string;
   apiKeyUrl?: string;
@@ -34,6 +35,23 @@ export interface GeminiProviderPreset extends PresetFamilyFields {
 }
 
 export const geminiProviderPresets: GeminiProviderPreset[] = [
+  {
+    name: "Me-zai",
+    websiteUrl: "https://api.mezai.uk",
+    settingsConfig: {
+      env: {
+        GOOGLE_GEMINI_BASE_URL: "https://api.mezai.uk",
+        GEMINI_MODEL: "Gemini 3.8 Flash",
+      },
+    },
+    baseURL: "https://api.mezai.uk",
+    model: "Gemini 3.8 Flash",
+    description: "Me-zai 统一中转（Gemini 兼容协议）",
+    category: "third_party",
+    pinned: true,
+    icon: "mezai",
+    iconColor: "#6366F1",
+  },
   {
     name: "Google Official",
     websiteUrl: "https://ai.google.dev/",

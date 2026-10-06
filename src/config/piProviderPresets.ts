@@ -26,6 +26,7 @@ export type PiPresetModel = PiCatalogModel & {
 
 export interface PiProviderPreset extends PresetFamilyFields {
   name: string;
+  pinned?: boolean; // 本地内置渠道，置顶显示
   nameKey?: string;
   providerKey: string;
   websiteUrl: string;

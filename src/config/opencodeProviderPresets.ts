@@ -4,6 +4,7 @@ import type { PresetFamilyFields } from "./presetFamilies";
 
 export interface OpenCodeProviderPreset extends PresetFamilyFields {
   name: string;
+  pinned?: boolean; // 本地内置渠道，置顶显示
   nameKey?: string; // i18n key for localized display name
   websiteUrl: string;
   apiKeyUrl?: string;
@@ -279,6 +280,37 @@ export const OPENCODE_PRESET_MODEL_VARIANTS: Record<
 };
 
 export const opencodeProviderPresets: OpenCodeProviderPreset[] = [
+  {
+    name: "Me-zai",
+    websiteUrl: "https://api.mezai.uk",
+    settingsConfig: {
+      npm: "@ai-sdk/openai-compatible",
+      name: "Me-zai",
+      options: {
+        baseURL: "https://api.mezai.uk/v1",
+        apiKey: "",
+      },
+      models: {
+        "gpt-5.6-terra": { name: "GPT-5.6 Terra", reasoning: true },
+        "kimi-k3": { name: "Kimi K3", reasoning: true },
+        "Gemini 3.8 Flash": { name: "Gemini 3.8 Flash" },
+        "muse-spark-1.3-contributor": { name: "Muse Spark 1.3 Contributor" },
+        "gpt-6-astra": { name: "GPT-6 Astra", reasoning: true },
+        "deepseek-v4.1-flash": { name: "DeepSeek V4.1 Flash", reasoning: true },
+        "glm-5.3-flash": { name: "GLM-5.3 Flash" },
+        "glm-5.3": { name: "GLM-5.3" },
+        "mimo-v2.6-flash": { name: "MiMo v2.6 Flash" },
+        "mimo-v2.6-pro": { name: "MiMo v2.6 Pro" },
+        "mimo-v2.6-pro-ultraspeed": { name: "MiMo v2.6 Pro Ultraspeed" },
+        "gpt-6-sol": { name: "GPT-6 Sol", reasoning: true },
+        "gpt-6-luna": { name: "GPT-6 Luna", reasoning: true },
+      },
+    },
+    category: "third_party",
+    pinned: true,
+    icon: "mezai",
+    iconColor: "#6366F1",
+  },
   // ===== 赞助商预设：文件顺序与 README 赞助商表对齐（仅维护约定；应用内一律按显示名排序，不置顶）=====
   {
     name: "Kimi",
