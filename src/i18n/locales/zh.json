@@ -346,6 +346,11 @@
       "title": "开启自动同步",
       "message": "开启自动同步后，每次数据库变更都会自动上传到 WebDAV 服务器。\n\n这可能会产生较高的网络流量消耗，请确保您的网络环境和 WebDAV 服务支持频繁的数据传输。",
       "confirm": "我已了解，继续开启"
+    },
+    "resetCodexState": {
+      "title": "重置 Codex 登录状态？",
+      "message": "此操作会关闭 Codex 路由接管、切换到 OpenAI Official，并删除 auth.json。当前 ChatGPT 登录和第三方 API Key 都会被清除，之后需要重新登录 Codex。会话历史、供应商配置和 MCP 配置不会删除。",
+      "confirm": "确认重置"
     }
   },
   "settings": {
@@ -917,7 +922,14 @@
     },
     "data": {
       "location": "存储位置"
-    }
+    },
+    "resetCodexState": "重置 Codex 登录状态",
+    "resetCodexStateDescription": "关闭 Codex 路由接管、切回 OpenAI Official，并清除当前登录凭据。用于修复卡在第三方 API Key、无法注销或无法恢复官方登录的状态。",
+    "resetCodexStateAction": "重置状态",
+    "resetCodexStateRunning": "正在重置",
+    "resetCodexStateCompleted": "Codex 状态已重置，请重新启动 Codex 并登录官方账号",
+    "resetCodexStateCompletedNoAuth": "Codex 已切回官方状态；未发现登录文件，请重新启动 Codex 登录",
+    "resetCodexStateFailed": "重置 Codex 状态失败，请关闭 Codex 后重试"
   },
   "apps": {
     "claude": "Claude",

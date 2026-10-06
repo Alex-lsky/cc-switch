@@ -1399,6 +1399,7 @@ pub fn run() {
             commands::pick_directory,
             commands::list_wsl_distros,
             commands::wsl_default_user,
+            commands::reset_codex_state,
             commands::open_external,
             commands::get_init_error,
             commands::get_migration_result,

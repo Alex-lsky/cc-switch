@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Loader2, RotateCcw } from "lucide-react";
 import { toast } from "@/lib/toast";
+import { Button } from "@/components/ui/button";
 import type { SettingsFormState } from "@/hooks/useSettings";
 import { SettingsSwitchRow } from "@/components/settings/SettingsLayout";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -22,6 +24,26 @@ export function CodexAuthSettings({
   const [showEnableConfirm, setShowEnableConfirm] = useState(false);
   const [showDisableConfirm, setShowDisableConfirm] = useState(false);
   const [hasUnifyBackup, setHasUnifyBackup] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+
+  const handleResetConfirm = async () => {
+    setShowResetConfirm(false);
+    setIsResetting(true);
+    try {
+      const result = await settingsApi.resetCodexState();
+      toast.success(
+        result.authRemoved
+          ? t("settings.resetCodexStateCompleted")
+          : t("settings.resetCodexStateCompletedNoAuth"),
+      );
+    } catch (error) {
+      console.error("Failed to reset Codex state:", error);
+      toast.error(t("settings.resetCodexStateFailed"));
+    } finally {
+      setIsResetting(false);
+    }
+  };
 
   const handleUnifyHistoryChange = (checked: boolean) => {
     if (checked) {
@@ -137,6 +159,46 @@ export function CodexAuthSettings({
         variant="info"
         onConfirm={(restoreBackup) => void handleDisableConfirm(restoreBackup)}
         onCancel={() => setShowDisableConfirm(false)}
+      />
+
+      <div className="flex items-center justify-between gap-4 rounded-lg border border-red-200/70 bg-red-50/50 p-4 dark:border-red-900/50 dark:bg-red-950/20">
+        <div className="flex min-w-0 items-start gap-3">
+          <RotateCcw className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+          <div className="min-w-0 space-y-1">
+            <div className="text-sm font-medium">
+              {t("settings.resetCodexState")}
+            </div>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {t("settings.resetCodexStateDescription")}
+            </p>
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant="destructive"
+          size="sm"
+          className="shrink-0"
+          disabled={isResetting}
+          onClick={() => setShowResetConfirm(true)}
+        >
+          {isResetting ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <RotateCcw className="h-3.5 w-3.5" />
+          )}
+          {isResetting
+            ? t("settings.resetCodexStateRunning")
+            : t("settings.resetCodexStateAction")}
+        </Button>
+      </div>
+
+      <ConfirmDialog
+        isOpen={showResetConfirm}
+        title={t("confirm.resetCodexState.title")}
+        message={t("confirm.resetCodexState.message")}
+        confirmText={t("confirm.resetCodexState.confirm")}
+        onConfirm={() => void handleResetConfirm()}
+        onCancel={() => setShowResetConfirm(false)}
       />
     </>
   );

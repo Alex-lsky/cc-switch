@@ -1,3 +1,9 @@
+export interface CodexStateResetResult {
+  takeoverDisabled: boolean;
+  authRemoved: boolean;
+  providerId: string;
+}
+
 import { invoke } from "@tauri-apps/api/core";
 import type {
   Settings,
@@ -31,6 +37,10 @@ export interface WebDavSyncResult {
 }
 
 export const settingsApi = {
+  async resetCodexState(): Promise<CodexStateResetResult> {
+    return await invoke("reset_codex_state");
+  },
+
   async get(): Promise<Settings> {
     return await invoke("get_settings");
   },

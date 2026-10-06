@@ -410,3 +410,69 @@ pub async fn extract_common_config_snippet(
     crate::services::provider::ProviderService::extract_common_config_snippet(&state, app)
         .map_err(|e| e.to_string())
 }
+
+/// fork 自维护的「重置 Codex 登录状态」恢复操作（v4.0 语义版）：
+/// 退出 Codex 路由/聚合模式（回到直连指针那家）→ 清认证中心托管账号 →
+/// 删 auth.json 与托管登录标记 → 切到 OpenAI Official 让 Codex 重新走登录。
+/// 用于登录态损坏、托管绑定卡死等场景的强制恢复；不是无感迁移操作。
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexStateResetResult {
+    pub takeover_disabled: bool,
+    pub auth_removed: bool,
+    pub provider_id: String,
+}
+
+#[tauri::command]
+pub async fn reset_codex_state(
+    state: tauri::State<'_, crate::store::AppState>,
+) -> Result<CodexStateResetResult, String> {
+    let app_type = AppType::Codex;
+
+    // 1) 路由/聚合激活时先正常退出：按直连指针那家重新投影客户端文件
+    let takeover_disabled = crate::mode::current::is_proxy(&app_type);
+    if takeover_disabled {
+        crate::mode::controller::exit(state.inner(), &app_type)
+            .await
+            .map_err(|e| format!("退出 Codex 路由模式失败: {e}"))?;
+    }
+
+    // 2) 清认证中心托管账号（连带清它们的登录暂存）
+    state
+        .codex_oauth_manager
+        .clear_auth()
+        .await
+        .map_err(|e| format!("清除 Codex OAuth 账号失败: {e}"))?;
+
+    // 3) 删 auth.json 与托管登录标记，让 Codex 回到登录页
+    let auth_path = codex_config::get_codex_auth_path();
+    let auth_removed = auth_path.exists();
+    if auth_removed {
+        config::delete_file(&auth_path).map_err(|e| format!("删除 Codex auth.json 失败: {e}"))?;
+    }
+    let marker_path = codex_config::get_codex_managed_oauth_live_auth_marker_path();
+    if marker_path.exists() {
+        let _ = config::delete_file(&marker_path);
+    }
+
+    // 4) 切到 OpenAI Official：重写 config.toml 为官方形态
+    state
+        .db
+        .ensure_official_seed_by_id(
+            crate::database::CODEX_OFFICIAL_PROVIDER_ID,
+            app_type.clone(),
+        )
+        .map_err(|e| format!("创建 OpenAI Official 供应商失败: {e}"))?;
+    crate::services::provider::ProviderService::switch(
+        state.inner(),
+        app_type,
+        crate::database::CODEX_OFFICIAL_PROVIDER_ID,
+    )
+    .map_err(|e| format!("切换到 OpenAI Official 失败: {e}"))?;
+
+    Ok(CodexStateResetResult {
+        takeover_disabled,
+        auth_removed,
+        provider_id: crate::database::CODEX_OFFICIAL_PROVIDER_ID.to_string(),
+    })
+}

@@ -346,6 +346,11 @@
       "title": "Enable Auto Sync",
       "message": "When auto sync is enabled, every database change will be automatically uploaded to the WebDAV server.\n\nThis may result in significant network traffic. Please ensure your network and WebDAV service can handle frequent data transfers.",
       "confirm": "I understand, enable"
+    },
+    "resetCodexState": {
+      "title": "Reset Codex login state?",
+      "message": "This exits Codex routing, switches to OpenAI Official, and deletes auth.json. Your current ChatGPT login and third-party API keys are cleared; you will need to sign in to Codex again. Session history, provider configs and MCP configs are kept.",
+      "confirm": "Reset"
     }
   },
   "settings": {
@@ -917,7 +922,14 @@
     },
     "data": {
       "location": "Location"
-    }
+    },
+    "resetCodexState": "Reset Codex login state",
+    "resetCodexStateDescription": "Exits Codex routing, switches back to OpenAI Official, and clears the current login credentials. Use this to recover from being stuck on a third-party API key, unable to sign out, or unable to restore the official login.",
+    "resetCodexStateAction": "Reset state",
+    "resetCodexStateRunning": "Resetting",
+    "resetCodexStateCompleted": "Codex state has been reset. Restart Codex and sign in with your official account",
+    "resetCodexStateCompletedNoAuth": "Codex is back to the official state; no login file was found. Restart Codex and sign in",
+    "resetCodexStateFailed": "Failed to reset Codex state. Close Codex and try again"
   },
   "apps": {
     "claude": "Claude",
