@@ -5,6 +5,10 @@ All notable changes to CC Switch will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Pro 4.0.2] - 2026-10-06
+
+Rebase of the maintained fork onto upstream v4.0.1 (sidebar UI, Stack aggregation mode, key-field write engine, rewritten session reader and usage dashboard) with every fork customization ported: the Me-zai channel, the #7490 quota-aware account-display recovery, the disable_response_storage deprecation treatment, WSL path hardening and distro tooling, the reset-login-state recovery (redesigned for the per-app mode architecture) and the vendor-neutral preset policy. Database schema advances v18 to v19; v3.20.8 users can upgrade in place. See `docs/release-notes/v4.0.2-zh.md`.
+
 ## [4.0.1] - 2026-10-05
 
 Fixes on top of the 4.0.0 preview: Gemini CLI sessions written in the newer JSONL format show up again, OpenCode offers thinking variants for reasoning models added through CC Switch, an upstream rejection is no longer reported as an output-token limit, the Grok Build key link opens the preset's sign-up page, Codex config directories inside WSL no longer stall startup and the Sessions page, and the sidebar toggle animates at the display's refresh rate, with a few small UI touches. The release pipeline is rebuilt to build macOS architectures in parallel and to fail fast instead of shipping an incomplete update manifest.
