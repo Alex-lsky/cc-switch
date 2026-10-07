@@ -637,8 +637,15 @@ jobs:
           rm -rf "$DMG_STAGE_DIR"
           echo "✅ Styled DMG created: $NEW_DMG"
 
+      - name: Detect Apple notarization secrets
+        id: apple-notarize
+        shell: bash
+        env:
+          HAS_APPLE_ID: ${{ secrets.APPLE_ID != '' }}
+        run: echo "has-apple-id=$HAS_APPLE_ID" >> "$GITHUB_OUTPUT"
+
       - name: Notarize macOS DMG
-        if: ${{ secrets.APPLE_ID != '' }}
+        if: steps.apple-notarize.outputs.has-apple-id == 'true'
         shell: bash
         timeout-minutes: 30
         env:
