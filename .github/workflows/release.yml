@@ -520,13 +520,11 @@ jobs:
       - name: Bundle macOS app and updater artifacts
         shell: bash
         timeout-minutes: 45
-        env:
-          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
+          # fork: 不声明 APPLE_* env——空的 APPLE_SIGNING_IDENTITY 会被 tauri
+          # 当成签名身份去 codesign 而失败；未定义才会完全跳过签名/公证
+          pnpm run build:renderer
           max_attempts=3
           for attempt in $(seq 1 "$max_attempts"); do
             echo "=== macOS bundle/notarization attempt ${attempt}/${max_attempts} ==="
@@ -538,6 +536,7 @@ jobs:
 
             # Apple 拒绝凭据或账号协议（401/403，例如 "A required agreement is missing or has expired"）
             # 只能人工处理，重试没有意义。
+            grep -aiE "error|failed|panicked" "$bundle_log" | head -20 | while IFS= read -r line; do echo "::error::$line"; done
             if grep -qE 'HTTP status code: 40[13]' "$bundle_log"; then
               echo "❌ Apple rejected the notarization request (HTTP 401/403); retrying cannot fix this." >&2
               echo "   If it mentions an agreement, the Account Holder must accept it at developer.apple.com, then re-run this job." >&2
