@@ -881,14 +881,13 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
-          name: CC Switch ${{ github.ref_name }}
-          prerelease: true
+          name: CC Switch Pro ${{ github.ref_name }}
+          prerelease: false
+          make_latest: true
           body: |
-            ## CC Switch ${{ github.ref_name }}
+            ## CC Switch Pro ${{ github.ref_name }}
 
-            🌐 **Only Official Website / 唯一官方网站 / 唯一の公式サイト**: [ccswitch.io](https://ccswitch.io)
-
-            Claude Code 供应商切换工具
+            维护版：基于上游 v4.0，保留厂商中立的预设策略、Me-zai 内置渠道与 #7490 额度感知修复。更新说明见 [v4.0.2 release notes](https://github.com/Alex-lsky/cc-switch/blob/main/docs/release-notes/v4.0.2-zh.md)。
 
             ### 下载
 
@@ -901,7 +900,7 @@ jobs:
             > `.tar.gz` 为 Tauri updater 自动更新专用，无需手动下载。
 
             ---
-            macOS 版本已通过 Apple 代码签名和公证，可直接安装使用。
+            macOS 构建未做 Apple 签名与公证（fork 政策），首次打开受 Gatekeeper 限制；自动更新经 minisign 签名验证。
           files: release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
