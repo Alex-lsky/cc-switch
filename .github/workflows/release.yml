@@ -614,7 +614,7 @@ jobs:
           mkdir -p "$DMG_STAGE_DIR"
           ditto "$APP_PATH" "$DMG_STAGE_DIR/CC Switch.app"
 
-          create-dmg \
+          DMG_ARGS=(
             --volname "CC Switch" \
             --background "src-tauri/icons/dmg-background.png" \
             --window-size 660 400 \
@@ -623,8 +623,13 @@ jobs:
             --icon "CC Switch.app" 180 220 \
             --hide-extension "CC Switch.app" \
             --app-drop-link 480 220 \
-            --codesign "$APPLE_SIGNING_IDENTITY" \
             --no-internet-enable \
+          )
+          # 空的 signing identity 传给 create-dmg 会签名失败；未签名构建不带该参数
+          if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
+            DMG_ARGS+=(--codesign "$APPLE_SIGNING_IDENTITY")
+          fi
+          create-dmg "${DMG_ARGS[@]}" \
             "release-assets/$NEW_DMG" \
             "$DMG_STAGE_DIR"
 
@@ -632,6 +637,7 @@ jobs:
           echo "✅ Styled DMG created: $NEW_DMG"
 
       - name: Notarize macOS DMG
+        if: ${{ secrets.APPLE_ID != '' }}
         shell: bash
         timeout-minutes: 30
         env:
