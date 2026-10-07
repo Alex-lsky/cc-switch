@@ -582,9 +582,10 @@ jobs:
             exit 1
           fi
 
-          # Staple notarization ticket to .app (Tauri already notarized it)
-          xcrun stapler staple "$APP_PATH"
-          echo "✅ .app stapled"
+          # Staple notarization ticket to .app (only exists when notarized;
+          # unsigned fork builds skip this - Gatekeeper warns per fork policy)
+          xcrun stapler staple "$APP_PATH"  \
+            || echo "⚠ No notarization ticket to staple (unsigned build), skipping"
 
           # 1) Collect .tar.gz (updater artifact)
           NEW_TAR_GZ="CC-Switch-${VERSION}-macOS.tar.gz"
