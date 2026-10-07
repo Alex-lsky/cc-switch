@@ -690,6 +690,7 @@ jobs:
           done
 
       - name: Verify macOS code signing and notarization
+        if: steps.apple-signing.outputs.has-cert == 'true'
         shell: bash
         run: |
           set -euo pipefail
