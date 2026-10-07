@@ -450,8 +450,8 @@ jobs:
           HAS_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
         run: echo "has-cert=$HAS_CERT" >> "$GITHUB_OUTPUT"
 
-      if: steps.apple-signing.outputs.has-cert == 'true'
       - name: Import Apple signing certificate
+        if: steps.apple-signing.outputs.has-cert == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -514,8 +514,8 @@ jobs:
 
       # 只打 .app（连同 updater 的 .app.tar.gz 和 .sig）：发布用的 DMG 在下面由 create-dmg 制作，
       # Tauri 自己的 DMG 从来不上传。失败只重试这一步，不会重编。
-      if: steps.apple-signing.outputs.has-cert == 'true'
       - name: Bundle, sign and notarize (macOS)
+        if: steps.apple-signing.outputs.has-cert == 'true'
         shell: bash
         timeout-minutes: 45
         env:
