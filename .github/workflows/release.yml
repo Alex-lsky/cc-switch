@@ -514,8 +514,10 @@ jobs:
 
       # 只打 .app（连同 updater 的 .app.tar.gz 和 .sig）：发布用的 DMG 在下面由 create-dmg 制作，
       # Tauri 自己的 DMG 从来不上传。失败只重试这一步，不会重编。
-      - name: Bundle, sign and notarize (macOS)
-        if: steps.apple-signing.outputs.has-cert == 'true'
+      # fork: 无 Apple 证书也要产出 .app / .app.tar.gz / .sig——tauri 在无
+      # signing identity 时自动跳过签名与公证，产出未签名包（Gatekeeper 按
+      # fork 政策告警）。上游有证书时此步骤同时完成 notarize。
+      - name: Bundle macOS app and updater artifacts
         shell: bash
         timeout-minutes: 45
         env:
