@@ -573,6 +573,7 @@ jobs:
             fi
           done
 
+echo "::error::PROBE tar-gz-missing"
           if [ -z "$TAR_GZ" ]; then
             echo "❌ No macOS .tar.gz updater artifact found" >&2
             exit 1
@@ -590,6 +591,7 @@ jobs:
           # 1) Collect .tar.gz (updater artifact)
           NEW_TAR_GZ="CC-Switch-${VERSION}-macOS.tar.gz"
           cp "$TAR_GZ" "release-assets/$NEW_TAR_GZ"
+echo "::error::PROBE sig-missing"
           if [ ! -f "$TAR_GZ.sig" ]; then
             echo "❌ Updater signature not found: $TAR_GZ.sig" >&2
             exit 1
@@ -606,6 +608,7 @@ jobs:
           # fork: no APPLE_SIGNING_IDENTITY (unsigned macOS policy) - create-dmg runs
           # without --codesign below, Gatekeeper warns per fork policy
 
+echo "::error::PROBE before-create-dmg-install"
           HOMEBREW_NO_AUTO_UPDATE=1 brew install create-dmg
           NEW_DMG="CC-Switch-${VERSION}-macOS.dmg"
           DMG_STAGE_DIR="$RUNNER_TEMP/dmg-stage"
@@ -628,6 +631,7 @@ jobs:
           if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
             DMG_ARGS+=(--codesign "$APPLE_SIGNING_IDENTITY")
           fi
+echo "::error::PROBE before-create-dmg-run"
           create-dmg "${DMG_ARGS[@]}" \
             "release-assets/$NEW_DMG" \
             "$DMG_STAGE_DIR"
